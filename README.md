@@ -39,6 +39,49 @@ cd ~/Documents/docs/.rag
 3. Pulls the chat model `qwen2.5:7b-instruct` (~4.4GB) into the Ollama volume
 4. Waits for `GET /health` (search API) and `GET /healthz` (agent) to succeed
 
+## Manual setup (after `docker compose build && docker compose up -d`)
+
+If you started the stack manually instead of running `setup.sh`, complete these steps before anything will work:
+
+**Step 1 — Pull the embedding model** (~270 MB, required for indexing)
+
+```bash
+docker exec docs-rag-ollama ollama pull nomic-embed-text
+```
+
+**Step 2 — Pull the chat model** (~4.4 GB, required for the chat UI)
+
+```bash
+docker exec docs-rag-ollama ollama pull qwen2.5:7b-instruct
+```
+
+**Step 3 — Set your docs path** (if your vault is not at the default `/Users/adarsh.consultant/Documents/docs`)
+
+Stop the stack, export the variable, and restart:
+
+```bash
+docker compose down
+DOCS_ROOT_HOST=/path/to/your/docs docker compose up -d
+```
+
+**Step 4 — Wait for services to be healthy, then trigger the initial index**
+
+```bash
+# Confirm the API is up
+curl http://127.0.0.1:49823/health
+
+# Index your docs into Elasticsearch
+curl -X POST http://127.0.0.1:49823/reindex
+```
+
+**Step 5 — Verify**
+
+```bash
+curl http://127.0.0.1:49823/stats
+```
+
+Once stats show a non-zero document count, the stack is ready. Open the chat UI at **http://127.0.0.1:52891**.
+
 ## Chat UI
 
 Open **http://127.0.0.1:52891** in your browser. The agent uses `qwen2.5:7b-instruct` running inside the Ollama container, with the three MCP search tools discovered over Streamable-HTTP from the `docs-rag-mcp` container.

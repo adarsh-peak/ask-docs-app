@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from mcp import ClientSession
@@ -16,7 +17,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:8001/mcp/")
 APP_URL = os.environ.get("APP_URL", "http://app:8000")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 MAX_TURNS = int(os.environ.get("MAX_TOOL_TURNS", "6"))
 STATIC_DIR = Path(__file__).parent / "static"
@@ -114,7 +115,8 @@ async def lifespan(app: FastAPI):
     await bridge.stop()
 
 
-app = FastAPI(title="docs-rag agent", lifespan=lifespan)
+app = FastAPI(title="docs-rag agent", lifespan=lifespan, docs_url="/swagger")
+app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="vite-assets")
 
 
 @app.get("/")
@@ -137,6 +139,40 @@ async def admin_wipe():
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await client.post(f"{APP_URL}/admin/wipe")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/docs")
+async def list_docs():
+    """Proxy to daemon: list all indexed files with chunk counts and titles."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{APP_URL}/docs")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/docs/content")
+async def get_doc_content(path: str):
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{APP_URL}/docs/content", params={"path": path})
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/stats")
+async def stats():
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{APP_URL}/stats")
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -300,3 +336,10 @@ async def chat(req: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/{full_path:path}")
+def spa_fallback(full_path: str):
+    """Serve index.html for client-side routes (/files, /graph) so deep links
+    and reloads don't 404. Declared last so real API routes take precedence."""
+    return FileResponse(STATIC_DIR / "index.html")

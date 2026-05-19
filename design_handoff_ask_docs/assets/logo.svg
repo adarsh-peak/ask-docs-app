@@ -1,0 +1,14 @@
+<svg viewBox="0 0 160 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  
+  <rect width="36" height="36" rx="8" fill="#18181C"></rect>
+  
+  <path d="M6 26 L13 10 L20 26" stroke="#7C6EFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+  <line x1="9" y1="20.5" x2="17" y2="20.5" stroke="#7C6EFA" stroke-width="2" stroke-linecap="round"></line>
+  
+  <path d="M23 16.5 C23 13.5 25.5 12 28 12 C30.5 12 32 13.5 32 16.5 L32 18.5 L28.5 18.5 L28.5 16.5" stroke="#F0EEF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+  <path d="M23 16.5 C23 19 23 21.5 23 23 C23 25 25.5 26 28 26 C30.5 26 32 25 32 23 L32 18.5" stroke="#F0EEF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+  
+  <text x="48" y="26" font-family="Syne, sans-serif" font-weight="700" font-size="18" letter-spacing="-0.36">
+    <tspan fill="#F0EEF8">Adarsh</tspan><tspan fill="#7C6EFA">.</tspan>
+  </text>
+</svg>

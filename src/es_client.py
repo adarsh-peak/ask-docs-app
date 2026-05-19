@@ -48,6 +48,41 @@ def create_index(es: Elasticsearch) -> bool:
     return True
 
 
+def list_docs(es: Elasticsearch) -> list[dict[str, Any]]:
+    if not es.indices.exists(index=INDEX_NAME):
+        return []
+    resp = es.search(
+        index=INDEX_NAME,
+        body={
+            "size": 0,
+            "aggs": {
+                "by_path": {
+                    "terms": {"field": "path", "size": 10000},
+                    "aggs": {
+                        "doc_title": {
+                            "top_hits": {"size": 1, "_source": ["title", "tags", "folder"]}
+                        }
+                    },
+                }
+            },
+        },
+    )
+    out: list[dict[str, Any]] = []
+    for bucket in resp["aggregations"]["by_path"]["buckets"]:
+        path: str = bucket["key"]
+        hits = bucket["doc_title"]["hits"]["hits"]
+        src = hits[0]["_source"] if hits else {}
+        out.append({
+            "file": path.split("/")[-1],
+            "path": path,
+            "chunks": bucket["doc_count"],
+            "title": src.get("title"),
+            "tags": src.get("tags", []),
+            "folder": src.get("folder", ""),
+        })
+    return sorted(out, key=lambda x: x["path"])
+
+
 def indexed_paths(es: Elasticsearch) -> set[str]:
     if not es.indices.exists(index=INDEX_NAME):
         return set()

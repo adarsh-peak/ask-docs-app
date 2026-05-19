@@ -44,7 +44,7 @@ services:
       - EMBED_DIMS=768
       - INDEX_NAME=docs
     volumes:
-      - ${DOCS_ROOT_HOST:-/Users/adarsh.consultant/Documents/docs}:/docs:ro
+      - ${DOCS_ROOT_HOST:-/Users/adarshgoswami/Documents/docs}:/docs:ro
     ports:
       - "127.0.0.1:${HOST_PORT:-49823}:8000"
     depends_on:
@@ -66,6 +66,9 @@ services:
       - INDEX_NAME=docs
       - MCP_TRANSPORT=http
       - MCP_HTTP_PORT=8001
+      - DOCS_ROOT=/docs
+    volumes:
+      - ${DOCS_ROOT_HOST:-/Users/adarshgoswami/Documents/docs}:/docs:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fs -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8001/mcp/ -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"hc\",\"version\":\"1\"}}}' | grep -qE '^(200|307)$'"]
       interval: 30s
@@ -90,7 +93,7 @@ services:
     environment:
       - MCP_URL=http://mcp:8001/mcp/
       - APP_URL=http://app:8000
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
     ports:
       - "127.0.0.1:${AGENT_PORT:-52891}:8000"
     depends_on:

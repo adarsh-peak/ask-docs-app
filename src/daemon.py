@@ -1,16 +1,17 @@
 from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .config import INDEX_NAME
+from .config import INDEX_NAME, DOCS_ROOT
 from .es_client import (
     get_client,
     create_index,
     knn_search,
     bm25_search,
     fuzzy_search,
+    list_docs,
 )
 from .embedder import Embedder
 from .indexer import reindex_new
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
     app.state.es.close()
 
 
-app = FastAPI(title="docs-rag daemon", lifespan=lifespan)
+app = FastAPI(title="docs-rag daemon", lifespan=lifespan, docs_url="/swagger")
 
 
 @app.get("/health")
@@ -93,6 +94,25 @@ def search_keyword(req: SearchRequest) -> list[dict[str, Any]]:
 def search_fuzzy(req: SearchRequest) -> list[dict[str, Any]]:
     """Typo-tolerant fuzzy search. Best when the query may be misspelled."""
     return fuzzy_search(app.state.es, req.query, top_k=req.top_k, tags=req.tags, folder=req.folder)
+
+
+@app.get("/docs")
+def docs():
+    """Return all indexed files with chunk counts and titles."""
+    return list_docs(app.state.es)
+
+
+@app.get("/docs/content")
+def get_doc_content(path: str = Query(..., min_length=1)):
+    """Return raw markdown content of a doc by its relative path."""
+    try:
+        abs_path = (DOCS_ROOT / path).resolve()
+        abs_path.relative_to(DOCS_ROOT.resolve())
+    except (ValueError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not abs_path.exists() or not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"path": path, "content": abs_path.read_text(encoding="utf-8", errors="replace")}
 
 
 @app.get("/stats")

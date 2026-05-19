@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "@adarsh_goswami/design/dist/theme.css";
+@import "@adarsh_goswami/design/dist/tailwind.config.css";
+@import "@radix-ui/themes/styles.css";
+
+* { box-sizing: border-box; }
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--brand-font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font: inherit; cursor: pointer; }
+/* Radix <Theme> renders this wrapper between #root and the app — give it a
+   concrete height so the app's flex layout can resolve against it. */
+.radix-themes:where([data-is-root-theme='true']) { height: 100%; }
+
+/* ── Keyframes (cosmic-theme animations — no package equivalent) ─── */
+@keyframes ad-pulse        { 0%,100% { opacity: 1; }   50% { opacity: 0.5; } }
+@keyframes ad-avatar-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(124,110,250,0.4); }
+                             50%      { box-shadow: 0 0 0 6px rgba(124,110,250,0); } }
+@keyframes ad-dot-blink    { 0%,80%,100% { opacity: 0; } 40% { opacity: 1; } }
+@keyframes ad-toast-in     { from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+                             to   { opacity: 1; transform: translateX(-50%) translateY(0); } }
+@keyframes ad-panel-in     { from { transform: translateX(100%); opacity: 0; }
+                             to   { transform: translateX(0); opacity: 1; } }
+@keyframes ad-backdrop-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ad-orb-breathe  { 0%,100% { transform: scale(1) translate(0,0); }
+                             50%      { transform: scale(1.08) translate(2%,-1%); opacity: 0.85; } }
+@keyframes ad-moon-float   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes ad-ring-expand  { 0%   { transform: scale(1);   opacity: 0.4; }
+                             100% { transform: scale(2.2); opacity: 0; } }
+
+/* ── Assistant message: thinking dots + streaming caret ────── */
+.thinking-dot { display: inline-block; animation: ad-dot-blink 1.4s infinite; }
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+.stream-caret {
+  display: inline-block; width: 2px; height: 1em;
+  background: var(--accent); margin-left: 2px;
+  animation: ad-dot-blink 1s step-end infinite; vertical-align: text-bottom;
+}
+
+/* ── Empty state: floating orb + expanding rings ──────────── */
+.empty-orb-wrap {
+  position: relative; width: 56px; height: 56px;
+  animation: ad-moon-float 6s ease-in-out infinite;
+}
+.empty-orb {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+  box-shadow: var(--brand-shadow-accent);
+}
+.empty-ring {
+  position: absolute; inset: -6px; border-radius: 50%;
+  border: 1px solid var(--accent-border);
+  animation: ad-ring-expand 3s ease-out infinite;
+}
+.empty-ring--delayed { animation-delay: 1.5s; }
+
+/* ── Cosmic background ─────────────────────────────────────── */
+.cosmic-orb {
+  position: absolute; border-radius: 50%; filter: blur(60px);
+  animation: ad-orb-breathe 18s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.cosmic-orb.primary {
+  top: -20vh; right: -10vw; width: 70vw; height: 70vw;
+  max-width: 1100px; max-height: 1100px;
+  background: radial-gradient(circle at 30% 30%,
+    rgba(124,110,250,0.45) 0%, rgba(124,110,250,0.20) 30%,
+    rgba(124,110,250,0.05) 55%, transparent 75%);
+}
+.cosmic-orb.secondary {
+  bottom: -30vh; left: -15vw; width: 60vw; height: 60vw;
+  max-width: 900px; max-height: 900px;
+  background: radial-gradient(circle at 60% 50%,
+    rgba(74,168,255,0.16) 0%, rgba(124,110,250,0.10) 35%, transparent 70%);
+  animation-delay: -9s;
+}
+.cosmic-bg { transition: opacity 0.25s ease; }
+body.drawer-open .cosmic-bg { opacity: 0; }
