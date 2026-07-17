@@ -40,7 +40,7 @@ export function Header({
       display: 'flex', justifyContent: 'center',
       borderBottom: '1px solid var(--border-subtle)',
       background: isDark
-        ? 'linear-gradient(180deg, rgba(10,10,11,0.7), rgba(10,10,11,0.3))'
+        ? 'linear-gradient(180deg, color-mix(in srgb, var(--bg-base) 94%, transparent), color-mix(in srgb, var(--bg-base) 78%, transparent))'
         : 'linear-gradient(180deg, rgba(250,250,250,0.9), rgba(250,250,250,0.6))',
       backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
     }}>

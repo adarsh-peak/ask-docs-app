@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '@radix-ui/themes'
 import type { TreeNode, TreeFolder } from '../types'
 
@@ -43,8 +43,39 @@ function FolderClosedIcon() {
   )
 }
 
+function getAncestorFolders(path: string): string[] {
+  const segments = path.split('/')
+  const ancestors: string[] = []
+  for (let i = 0; i < segments.length - 1; i++) {
+    ancestors.push(segments.slice(0, i + 1).join('/'))
+  }
+  return ancestors
+}
+
+function countFiles(folder: TreeFolder): number {
+  return folder.children.reduce((count, child) => (
+    count + (child.kind === 'folder' ? countFiles(child) : 1)
+  ), 0)
+}
+
 export function FolderTree({ nodes, selectedPath, onSelectFile }: FolderTreeProps) {
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set())
+  const selectedRef = useRef<HTMLButtonElement | null>(null)
+  const [openFolders, setOpenFolders] = useState<Set<string>>(
+    () => new Set(selectedPath ? getAncestorFolders(selectedPath) : [])
+  )
+
+  useEffect(() => {
+    if (!selectedPath) return
+    setOpenFolders(prev => {
+      const next = new Set(prev)
+      getAncestorFolders(selectedPath).forEach(folder => next.add(folder))
+      return next
+    })
+  }, [selectedPath])
+
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selectedPath, openFolders])
 
   const toggleFolder = (fullPath: string) => {
     setOpenFolders(prev => {
@@ -56,30 +87,26 @@ export function FolderTree({ nodes, selectedPath, onSelectFile }: FolderTreeProp
 
   const renderNode = (node: TreeNode, depth: number) => {
     if (node.kind === 'folder') {
-      const isOpen = openFolders.has((node as TreeFolder).fullPath)
+      const folder = node as TreeFolder
+      const isOpen = openFolders.has(folder.fullPath)
       return (
-        <div key={(node as TreeFolder).fullPath}>
+        <div key={folder.fullPath}>
           <button
-            onClick={() => toggleFolder((node as TreeFolder).fullPath)}
+            className="file-tree-button file-tree-button--folder"
+            onClick={() => toggleFolder(folder.fullPath)}
             style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 5,
               paddingLeft: 10 + depth * 14,
               paddingTop: 5, paddingBottom: 5, paddingRight: 8,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontFamily: 'var(--brand-font-body)',
-              fontSize: 12, fontWeight: 600,
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-              textAlign: 'left', userSelect: 'none',
             }}
           >
             <ChevronIcon open={isOpen} />
             <FolderClosedIcon />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span className="file-tree-label">
               {node.name}
             </span>
+            <span className="file-tree-count">{countFiles(folder)}</span>
           </button>
-          {isOpen && (node as TreeFolder).children.map(child => renderNode(child, depth + 1))}
+          {isOpen && folder.children.map(child => renderNode(child, depth + 1))}
         </div>
       )
     }
@@ -88,22 +115,16 @@ export function FolderTree({ nodes, selectedPath, onSelectFile }: FolderTreeProp
     return (
       <Tooltip key={node.path} content={node.name} side="right" delayDuration={600}>
         <button
+          ref={isSelected ? selectedRef : undefined}
+          className={`file-tree-button file-tree-button--file${isSelected ? ' file-tree-button--selected' : ''}`}
           onClick={() => onSelectFile(node.path)}
           style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 6,
             paddingLeft: 10 + depth * 14,
             paddingTop: 5, paddingBottom: 5, paddingRight: 8,
-            background: isSelected ? 'var(--accent-subtle)' : 'transparent',
-            border: 'none', cursor: 'pointer',
-            borderLeft: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
-            color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
-            fontFamily: 'var(--brand-font-body)', fontSize: 13, textAlign: 'left',
-            transition: 'background 100ms, color 100ms',
-            userSelect: 'none',
           }}
         >
           {node.name.toLowerCase().endsWith('.md') ? <FileDocIcon /> : <FileGenericIcon />}
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span className="file-tree-label">
             {node.title ?? node.name}
           </span>
         </button>
@@ -112,7 +133,7 @@ export function FolderTree({ nodes, selectedPath, onSelectFile }: FolderTreeProp
   }
 
   return (
-    <div style={{ overflowY: 'auto', flex: 1, paddingBottom: 16 }}>
+    <div className="files-tree-scroll">
       {nodes.map(node => renderNode(node, 0))}
     </div>
   )

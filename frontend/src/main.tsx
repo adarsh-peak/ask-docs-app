@@ -16,7 +16,7 @@ const storedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <ThemeProvider defaultTheme={storedTheme ?? 'dark'}>
+      <ThemeProvider defaultTheme={storedTheme ?? 'light'}>
         <ThemeSync />
         <App />
       </ThemeProvider>

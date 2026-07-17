@@ -51,11 +51,22 @@ export interface GraphNode {
   label: string
   type: 'doc' | 'tag'
   folder?: string
+  path?: string
+  title?: string | null
+  tags?: string[]
+  chunks?: number
+  x?: number
+  y?: number
+  vx?: number
+  vy?: number
 }
 
 export interface GraphLink {
   source: string
   target: string
+  type?: 'wiki' | 'tag'
+  value?: number
+  label?: string
 }
 
 export interface GraphData {

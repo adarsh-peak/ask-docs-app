@@ -4,7 +4,116 @@
 @import "@radix-ui/themes/styles.css";
 
 /* Override the design package's body font (DM Sans) with Poppins */
-:root { --brand-font-body: 'Poppins', sans-serif; }
+:root {
+  --brand-font-body: 'Poppins', sans-serif;
+  color-scheme: dark;
+}
+
+[data-theme="dark"] {
+  /* GitHub Primer Dark Dimmed inspired palette. */
+  --bg-base:       #22272E;
+  --bg-surface:    #2D333B;
+  --bg-raised:     #373E47;
+  --bg-overlay:    #3D444D;
+
+  --border-subtle: #373E47;
+  --border-soft:   #444C56;
+  --border-mid:    #545D68;
+
+  --text-primary:   #CDD9E5;
+  --text-secondary: #ADBAC7;
+  --text-muted:     #909DAB;
+  --text-disabled:  #768390;
+
+  --accent:        #6CB6FF;
+  --accent-bright: #96D0FF;
+  --accent-dim:    #539BF5;
+  --accent-glow:     rgba(83, 155, 245, 0.18);
+  --accent-subtle:   rgba(65, 132, 228, 0.18);
+  --accent-contrast: #FFFFFF;
+
+  --success: #57AB5A;
+  --warning: #C69026;
+  --error:   #E5534B;
+  --info:    #539BF5;
+
+  --success-bg: rgba(70, 149, 74, 0.18);
+  --warning-bg: rgba(198, 144, 38, 0.18);
+  --error-bg:   rgba(229, 83, 75, 0.18);
+  --info-bg:    rgba(65, 132, 228, 0.18);
+
+  --accent-border:  rgba(65, 132, 228, 0.42);
+  --success-border: rgba(70, 149, 74, 0.42);
+  --warning-border: rgba(198, 144, 38, 0.42);
+  --error-border:   rgba(229, 83, 75, 0.42);
+  --info-border:    rgba(65, 132, 228, 0.42);
+
+  --bg-hover:      #373E47;
+  --bg-active:     #444C56;
+
+  --accent-hover:  #96D0FF;
+  --accent-active: #539BF5;
+
+  --border-hover:  #636E7B;
+  --border-focus:  #539BF5;
+
+  --focus-ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--accent);
+
+  --brand-shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.28);
+  --brand-shadow-md:     0 8px 24px rgba(0, 0, 0, 0.32);
+  --brand-shadow-lg:     0 16px 48px rgba(0, 0, 0, 0.36);
+  --brand-shadow-accent: 0 0 24px rgba(83, 155, 245, 0.22);
+}
+
+[data-theme="dark"] .radix-themes {
+  --accent-1:  #1C2128;
+  --accent-2:  #22272E;
+  --accent-3:  #263C5D;
+  --accent-4:  #284B75;
+  --accent-5:  #2F5F95;
+  --accent-6:  #316DCA;
+  --accent-7:  #4184E4;
+  --accent-8:  #539BF5;
+  --accent-9:  #6CB6FF;
+  --accent-10: #96D0FF;
+  --accent-11: #CDE8FF;
+  --accent-12: #CDE8FF;
+
+  --accent-a1:  rgba(83, 155, 245, 0.06);
+  --accent-a2:  rgba(83, 155, 245, 0.09);
+  --accent-a3:  rgba(83, 155, 245, 0.16);
+  --accent-a4:  rgba(83, 155, 245, 0.22);
+  --accent-a5:  rgba(83, 155, 245, 0.30);
+  --accent-a6:  rgba(83, 155, 245, 0.42);
+  --accent-a7:  rgba(83, 155, 245, 0.52);
+  --accent-a8:  rgba(83, 155, 245, 0.66);
+  --accent-a9:  rgba(83, 155, 245, 0.86);
+  --accent-a10: rgba(108, 182, 255, 0.90);
+  --accent-a11: rgba(150, 208, 255, 0.94);
+  --accent-a12: rgba(205, 232, 255, 0.98);
+
+  --accent-contrast:  #FFFFFF;
+  --accent-surface:   rgba(65, 132, 228, 0.18);
+  --accent-indicator: #6CB6FF;
+  --accent-track:     #6CB6FF;
+
+  --gray-1:  #22272E;
+  --gray-2:  #2D333B;
+  --gray-3:  #373E47;
+  --gray-4:  #3D444D;
+  --gray-5:  #444C56;
+  --gray-6:  #4B535D;
+  --gray-7:  #545D68;
+  --gray-8:  #636E7B;
+  --gray-9:  #909DAB;
+  --gray-10: #ADBAC7;
+  --gray-11: #ADBAC7;
+  --gray-12: #CDD9E5;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
 
 * { box-sizing: border-box; }
 html, body, #root {
@@ -86,3 +195,14 @@ button { font: inherit; cursor: pointer; }
 }
 .cosmic-bg { transition: opacity 0.25s ease; }
 body.drawer-open .cosmic-bg { opacity: 0; }
+
+[data-theme="dark"] .cosmic-orb.primary {
+  background: radial-gradient(circle at 30% 30%,
+    rgba(83,155,245,0.18) 0%, rgba(83,155,245,0.10) 34%,
+    rgba(83,155,245,0.04) 58%, transparent 76%);
+}
+
+[data-theme="dark"] .cosmic-orb.secondary {
+  background: radial-gradient(circle at 60% 50%,
+    rgba(57,197,207,0.10) 0%, rgba(83,155,245,0.06) 36%, transparent 72%);
+}

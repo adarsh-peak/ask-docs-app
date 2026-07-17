@@ -187,7 +187,7 @@ const markdownComponents: Components = {
       size="4"
       mb="2"
       mt="5"
-      style={{ fontFamily: 'var(--brand-font-display)', color: 'var(--text-secondary)' }}
+      style={{ fontFamily: 'var(--brand-font-display)', color: 'var(--text-primary)' }}
     >
       {children}
     </Heading>
@@ -199,7 +199,7 @@ const markdownComponents: Components = {
       mb="4"
       style={{
         fontFamily: 'var(--brand-font-body)',
-        color: 'var(--text-secondary)',
+        color: 'var(--text-primary)',
         lineHeight: 'var(--brand-leading-relaxed)',
         display: 'block',
       }}
@@ -303,7 +303,7 @@ const markdownComponents: Components = {
         marginBottom: 'var(--sp-4)',
         paddingLeft: 'var(--sp-4)',
         listStyleType: 'disc',
-        color: 'var(--text-secondary)',
+        color: 'var(--text-primary)',
         fontFamily: 'var(--brand-font-body)',
       }}
     >
@@ -316,7 +316,7 @@ const markdownComponents: Components = {
         marginBottom: 'var(--sp-4)',
         paddingLeft: 'var(--sp-4)',
         listStyleType: 'decimal',
-        color: 'var(--text-secondary)',
+        color: 'var(--text-primary)',
         fontFamily: 'var(--brand-font-body)',
       }}
     >
@@ -330,7 +330,7 @@ const markdownComponents: Components = {
       mb="1"
       style={{
         fontFamily: 'var(--brand-font-body)',
-        color: 'var(--text-secondary)',
+        color: 'var(--text-primary)',
         display: 'list-item',
       }}
     >
@@ -383,7 +383,7 @@ const markdownComponents: Components = {
       style={{
         padding: '8px 12px',
         borderBottom: '1px solid var(--border-subtle)',
-        color: 'var(--text-secondary)',
+        color: 'var(--text-primary)',
       }}
     >
       {injectColorSwatches(children)}

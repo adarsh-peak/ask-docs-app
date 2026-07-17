@@ -1,9 +1,65 @@
 import { useEffect, useRef, useState } from 'react'
 import mermaid from 'mermaid'
-import { Box, Dialog, Flex, IconButton, Text, TextField, Tooltip } from '@radix-ui/themes'
+import { Box, Dialog, DropdownMenu, Flex, IconButton, Text, TextField, Tooltip } from '@radix-ui/themes'
 import { TransformWrapper, TransformComponent, useControls, useTransformEffect } from 'react-zoom-pan-pinch'
 
 let renderCounter = 0
+
+function chartStorageKey(chart: string): string {
+  let h = 0
+  for (let i = 0; i < chart.length; i++) {
+    h = (Math.imul(31, h) + chart.charCodeAt(i)) | 0
+  }
+  return `mermaid-zoom-${h >>> 0}`
+}
+
+function chartFileStem(chart: string): string {
+  return chartStorageKey(chart).replace('mermaid-zoom-', 'mermaid-diagram-')
+}
+
+function downloadableSvg(svg: string, background: string) {
+  // Mermaid's SVG can contain HTML labels inside <foreignObject> (including
+  // HTML-only markup such as <br>). Parse it as browser DOM rather than strict
+  // XML; strict parsing turns otherwise valid Mermaid output into <parsererror>.
+  const wrapper = document.createElement('div')
+  wrapper.innerHTML = svg
+  const root = wrapper.querySelector('svg')
+  if (!root) throw new Error('The rendered diagram does not contain an SVG.')
+  const viewBox = (root.getAttribute('viewBox') ?? '')
+    .trim()
+    .split(/[ ,]+/)
+    .map(Number)
+  const hasViewBox = viewBox.length === 4 && viewBox.every(Number.isFinite)
+  const width = hasViewBox ? viewBox[2] : parseFloat(root.getAttribute('width') ?? '') || 1200
+  const height = hasViewBox ? viewBox[3] : parseFloat(root.getAttribute('height') ?? '') || 800
+  const x = hasViewBox ? viewBox[0] : 0
+  const y = hasViewBox ? viewBox[1] : 0
+
+  root.setAttribute('width', String(width))
+  root.setAttribute('height', String(height))
+
+  const backgroundRect = root.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  backgroundRect.setAttribute('x', String(x))
+  backgroundRect.setAttribute('y', String(y))
+  backgroundRect.setAttribute('width', String(width))
+  backgroundRect.setAttribute('height', String(height))
+  backgroundRect.setAttribute('fill', background)
+  root.insertBefore(backgroundRect, root.firstChild)
+
+  return { source: new XMLSerializer().serializeToString(root), width, height }
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 // Resolve a CSS custom property to a concrete color in the element's context.
 // Mermaid runs color math (khroma) on these, so they must be real values, not
@@ -108,6 +164,41 @@ const CloseIcon = () => (
     <path d="M3.5 3.5l8 8M11.5 3.5l-8 8" />
   </svg>
 )
+const DownloadIcon = () => (
+  <svg {...iconProps}>
+    <path d="M7.5 1.5V10M4.5 7L7.5 10L10.5 7M2.5 12.5H12.5" />
+  </svg>
+)
+
+function DownloadMenu({
+  exporting,
+  onDownload,
+}: {
+  exporting: boolean
+  onDownload: (format: 'png' | 'svg') => void
+}) {
+  return (
+    <DropdownMenu.Root>
+      <Tooltip content="Download diagram">
+        <DropdownMenu.Trigger>
+          <IconButton
+            variant="soft"
+            color="gray"
+            size="1"
+            aria-label="Download diagram"
+            disabled={exporting}
+          >
+            <DownloadIcon />
+          </IconButton>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.Item onSelect={() => onDownload('png')}>Download PNG</DropdownMenu.Item>
+        <DropdownMenu.Item onSelect={() => onDownload('svg')}>Download SVG</DropdownMenu.Item>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  )
+}
 
 // Zoom controls — must live inside <TransformWrapper> to access the transform
 // hooks. The percentage is editable: type a value (10–1000) and Enter / blur to
@@ -115,16 +206,18 @@ const CloseIcon = () => (
 const MIN_PCT = 10
 const MAX_PCT = 1000
 
-function ZoomControls() {
+function ZoomControls({ storageKey }: { storageKey: string }) {
   const { zoomIn, zoomOut, resetTransform, centerView } = useControls()
   const [scale, setScale] = useState(1)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const cancelNext = useRef(false)
 
-  // Track the live scale so the percentage stays in sync with wheel/pinch zoom.
+  // Track the live scale, keep the percentage display in sync, and persist per-diagram.
   useTransformEffect((ref) => {
-    setScale(ref.state.scale)
+    const s = ref.state.scale
+    setScale(s)
+    localStorage.setItem(storageKey, String(s))
   })
 
   const pct = Math.round(scale * 100)
@@ -199,6 +292,10 @@ export function Mermaid({ chart }: { chart: string }) {
   const [svg, setSvg] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const [initialScale, setInitialScale] = useState(1)
+  const [exporting, setExporting] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const storageKey = chartStorageKey(chart)
 
   useEffect(() => {
     let cancelled = false
@@ -207,10 +304,15 @@ export function Mermaid({ chart }: { chart: string }) {
     mermaid.initialize({
       startOnLoad: false,
       theme: 'base',
+      // Render node labels as native SVG <text> rather than HTML inside
+      // <foreignObject>. foreignObject content taints a canvas when the diagram
+      // is rasterised for PNG export ("Tainted canvases may not be exported"),
+      // so htmlLabels must stay off for the download-as-PNG path to work.
+      htmlLabels: false,
       // Render diagrams at their natural size; the container's overflowX:auto
       // then gives a horizontal scrollbar for wide diagrams instead of shrinking
       // them to fit (which makes labels unreadable).
-      flowchart: { useMaxWidth: false },
+      flowchart: { useMaxWidth: false, htmlLabels: false },
       sequence: { useMaxWidth: false },
       themeVariables: themeFrom(host),
     })
@@ -234,6 +336,64 @@ export function Mermaid({ chart }: { chart: string }) {
       cancelled = true
     }
   }, [chart])
+
+  useEffect(() => {
+    if (open) {
+      const stored = parseFloat(localStorage.getItem(storageKey) ?? '')
+      setInitialScale(Number.isNaN(stored) ? 1 : stored)
+    }
+  }, [open, storageKey])
+
+  const download = async (format: 'png' | 'svg') => {
+    if (!svg || exporting) return
+    setExporting(true)
+    setDownloadError(null)
+
+    try {
+      const host = containerRef.current ?? document.documentElement
+      const background = cssVar(host, '--bg-raised', '#16181d')
+      const prepared = downloadableSvg(svg, background)
+      const filename = chartFileStem(chart)
+
+      if (format === 'svg') {
+        saveBlob(new Blob([prepared.source], { type: 'image/svg+xml;charset=utf-8' }), `${filename}.svg`)
+        return
+      }
+
+      const svgBlob = new Blob([prepared.source], { type: 'image/svg+xml;charset=utf-8' })
+      const sourceUrl = URL.createObjectURL(svgBlob)
+      try {
+        const image = new Image()
+        await new Promise<void>((resolve, reject) => {
+          image.onload = () => resolve()
+          image.onerror = () => reject(new Error('The rendered SVG could not be converted to PNG.'))
+          image.src = sourceUrl
+        })
+
+        const scale = 2
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.ceil(prepared.width * scale)
+        canvas.height = Math.ceil(prepared.height * scale)
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('Canvas export is unavailable in this browser.')
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        const png = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error('The PNG could not be created.'))),
+            'image/png',
+          )
+        })
+        saveBlob(png, `${filename}.png`)
+      } finally {
+        URL.revokeObjectURL(sourceUrl)
+      }
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'The diagram could not be downloaded.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (error) {
     return (
@@ -269,6 +429,7 @@ export function Mermaid({ chart }: { chart: string }) {
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Box
         ref={containerRef}
+        className="mermaid-diagram-container"
         mb="4"
         style={{
           position: 'relative',
@@ -291,18 +452,34 @@ export function Mermaid({ chart }: { chart: string }) {
           dangerouslySetInnerHTML={{ __html: svg }}
         />
         {svg && (
-          <Tooltip content="Fullscreen">
-            <IconButton
-              variant="soft"
-              color="gray"
-              size="1"
-              aria-label="Open diagram fullscreen"
-              onClick={() => setOpen(true)}
-              style={{ position: 'absolute', top: 8, right: 8 }}
-            >
-              <ExpandIcon />
-            </IconButton>
-          </Tooltip>
+          <Flex
+            className="mermaid-diagram__actions"
+            gap="2"
+            onClick={(event) => event.stopPropagation()}
+            style={{ position: 'absolute', top: 8, right: 8 }}
+          >
+            <DownloadMenu exporting={exporting} onDownload={(format) => void download(format)} />
+            <Tooltip content="Fullscreen">
+              <IconButton
+                variant="soft"
+                color="gray"
+                size="1"
+                aria-label="Open diagram fullscreen"
+                onClick={() => setOpen(true)}
+              >
+                <ExpandIcon />
+              </IconButton>
+            </Tooltip>
+          </Flex>
+        )}
+        {downloadError && (
+          <Text
+            role="alert"
+            size="1"
+            style={{ display: 'block', padding: '0 var(--sp-4) var(--sp-3)', color: 'var(--accent-bright)' }}
+          >
+            Download failed: {downloadError}
+          </Text>
         )}
       </Box>
 
@@ -335,8 +512,11 @@ export function Mermaid({ chart }: { chart: string }) {
             overflow: 'hidden',
           }}
         >
-          <TransformWrapper minScale={0.1} maxScale={10} centerOnInit wheel={{ step: 0.15 }}>
-            <ZoomControls />
+          <TransformWrapper minScale={0.1} maxScale={10} initialScale={initialScale} centerOnInit limitToBounds={false} wheel={{ disabled: true }}>
+            <ZoomControls storageKey={storageKey} />
+            <Box style={{ position: 'absolute', top: 12, right: 52, zIndex: 2 }}>
+              <DownloadMenu exporting={exporting} onDownload={(format) => void download(format)} />
+            </Box>
             <Dialog.Close>
               <IconButton
                 variant="soft"

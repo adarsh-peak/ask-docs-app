@@ -81,6 +81,12 @@
   text-transform: uppercase;
 }
 
+/* Use semibold (600) for inline bold — 700 is too heavy against 400 body text */
+.blog-post strong,
+.blog-post b {
+  font-weight: var(--brand-font-semibold);
+}
+
 /* Obsidian-style internal links: [[okta]] -> _tags/okta.md */
 .blog-post .wiki-link {
   color: var(--accent);
@@ -105,4 +111,20 @@
 
 .blog-post .wiki-link--unresolved:hover {
   background: transparent;
+}
+
+.mermaid-diagram__actions {
+  opacity: 0;
+  transition: opacity var(--brand-duration-fast) var(--brand-ease-out);
+}
+
+.mermaid-diagram-container:hover .mermaid-diagram__actions,
+.mermaid-diagram__actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .mermaid-diagram__actions {
+    opacity: 1;
+  }
 }
