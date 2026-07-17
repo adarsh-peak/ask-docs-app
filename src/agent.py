@@ -167,6 +167,39 @@ async def list_all_files():
             raise HTTPException(status_code=502, detail=str(e))
 
 
+class FilesSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(8, ge=1, le=20)
+
+
+@app.post("/api/files/search")
+async def search_files(req: FilesSearchRequest):
+    """Proxy to daemon: search indexed file content for the /files route."""
+    payload = {"query": req.query, "top_k": req.top_k}
+
+    async def run_search(client: httpx.AsyncClient, mode: str) -> Any:
+        resp = await client.post(f"{APP_URL}/search/{mode}", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        fuzzy, semantic = await asyncio.gather(
+            run_search(client, "fuzzy"),
+            run_search(client, "rag"),
+            return_exceptions=True,
+        )
+
+    errors: dict[str, str] = {}
+    if isinstance(fuzzy, Exception):
+        errors["fuzzy"] = str(fuzzy)
+        fuzzy = []
+    if isinstance(semantic, Exception):
+        errors["semantic"] = str(semantic)
+        semantic = []
+
+    return {"fuzzy": fuzzy, "semantic": semantic, "errors": errors}
+
+
 @app.get("/docs")
 async def list_docs():
     """Proxy to daemon: list all indexed files with chunk counts and titles."""

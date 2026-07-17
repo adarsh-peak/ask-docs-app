@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from typing import Any, Iterable
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
@@ -182,6 +183,22 @@ def _format_hits(resp: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _phrase_count(text: str, query: str) -> int:
+    tokens = [t for t in re.split(r"\s+", query.strip().lower()) if t]
+    if not tokens:
+        return 0
+    pattern = r"\b" + r"\s+".join(re.escape(token) for token in tokens) + r"\b"
+    return len(re.findall(pattern, text.lower()))
+
+
+def _heading_phrase_count(text: str, query: str) -> int:
+    count = 0
+    for line in text.splitlines():
+        if re.match(r"^\s{0,3}#{1,6}\s+", line) and _phrase_count(line, query):
+            count += 1
+    return count
+
+
 def knn_search(
     es: Elasticsearch,
     vector: list[float],
@@ -250,11 +267,91 @@ def fuzzy_search(
             }
         }
     ]
+    should = [
+        {
+            "multi_match": {
+                "query": query,
+                "fields": ["title^10", "body^5"],
+                "type": "phrase",
+                "boost": 8,
+            }
+        }
+    ]
+    query_body = {
+        "bool": {
+            "must": must,
+            "should": should,
+            "filter": _filter_clauses(tags, folder),
+        }
+    }
     body = {
-        "query": {"bool": {"must": must, "filter": _filter_clauses(tags, folder)}},
+        "query": query_body,
         "_source": ["path", "title", "folder", "tags", "body"],
-        "size": top_k,
-        "collapse": {"field": "path"},
+        "size": min(max(top_k * 50, 100), 1000),
     }
     resp = es.search(index=INDEX_NAME, body=body)
-    return _format_hits(resp)
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for hit in resp["hits"]["hits"]:
+        src = hit["_source"]
+        path = src.get("path")
+        if not path:
+            continue
+        score = float(hit.get("_score") or 0.0)
+        group = grouped.setdefault(
+            path,
+            {
+                "best_hit": hit,
+                "best_score": score,
+                "matched_chunks": 0,
+                "exact_matches": 0,
+                "heading_matches": 0,
+            },
+        )
+        group["matched_chunks"] += 1
+        body_text = src.get("body", "")
+        group["exact_matches"] += _phrase_count(body_text, query)
+        group["heading_matches"] += _heading_phrase_count(body_text, query)
+        if score > group["best_score"]:
+            group["best_hit"] = hit
+            group["best_score"] = score
+
+    ranked: list[dict[str, Any]] = []
+    for path, group in grouped.items():
+        hit = group["best_hit"]
+        src = hit["_source"]
+        body_text = src.get("body", "")
+        matched_chunks = group["matched_chunks"]
+        exact_matches = group["exact_matches"]
+        heading_matches = group["heading_matches"]
+        best_score = group["best_score"]
+        score = (
+            best_score
+            + min(matched_chunks, 20) * 0.25
+            + min(exact_matches, 20) * 8
+            + min(heading_matches, 10) * 15
+        )
+        ranked.append(
+            {
+                "path": path,
+                "title": src.get("title"),
+                "folder": src.get("folder"),
+                "tags": src.get("tags", []),
+                "snippet": body_text[:SNIPPET_CHARS],
+                "score": score,
+                "matched_chunks": matched_chunks,
+                "exact_matches": exact_matches,
+                "heading_matches": heading_matches,
+            }
+        )
+
+    ranked.sort(
+        key=lambda hit: (
+            -hit["heading_matches"],
+            -hit["exact_matches"],
+            -hit["score"],
+            -hit["matched_chunks"],
+            hit["path"],
+        )
+    )
+    return ranked[:top_k]

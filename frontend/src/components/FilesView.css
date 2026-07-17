@@ -45,6 +45,11 @@
   line-height: 1.5;
 }
 
+.files-route-message--compact {
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
 .files-tree-scroll {
   overflow-y: auto;
   flex: 1;
@@ -116,20 +121,55 @@
 }
 
 .file-search-row {
-  min-height: 44px;
-  align-items: flex-start;
-  padding: 6px 10px 7px 10px;
+  min-height: 34px;
+  align-items: center;
+  padding: 6px 10px;
+}
+
+.files-search-results {
+  padding-top: 8px;
+}
+
+.files-search-section {
+  margin-bottom: 10px;
+}
+
+.files-search-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 96%, var(--bg-base));
+  color: var(--text-secondary);
+  font-family: var(--brand-font-mono);
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.files-search-section-count {
+  color: var(--text-muted);
 }
 
 .file-search-body {
   min-width: 0;
   flex: 1;
+}
+
+.file-search-title-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
 }
 
 .file-search-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -137,23 +177,18 @@
   line-height: 1.25;
 }
 
-.file-search-path {
+.file-search-title-row .files-pill {
+  flex-shrink: 0;
+}
+
+.files-pill--project {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-muted);
-  font-family: var(--brand-font-mono);
-  font-size: 10.5px;
-  line-height: 1.3;
-}
-
-.file-search-badges {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 3px;
-  min-width: 0;
-  flex-wrap: wrap;
+  max-width: 42%;
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--accent-bright);
 }
 
 .files-pill,

@@ -118,6 +118,11 @@
   transition: opacity var(--brand-duration-fast) var(--brand-ease-out);
 }
 
+.mermaid-diagram {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 .mermaid-diagram-container:hover .mermaid-diagram__actions,
 .mermaid-diagram__actions:focus-within {
   opacity: 1;

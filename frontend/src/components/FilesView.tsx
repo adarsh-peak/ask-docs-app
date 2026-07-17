@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom'
 import { Spinner, TextField, IconButton, Tooltip } from '@radix-ui/themes'
 import { FolderTree } from './FolderTree'
 import { DocViewer } from './DocViewer'
-import { fetchDocs, fetchAllFiles } from '../api/docs'
+import { fetchDocs, fetchAllFiles, searchFiles } from '../api/docs'
 import { buildFileTree } from '../utils/buildTree'
-import type { DocMeta, TreeNode, TreeFile } from '../types'
+import type { DocMeta, TreeNode, TreeFile, FileSearchHit, FileSearchResponse } from '../types'
 import './FilesView.css'
 
 function FileDocIcon() {
@@ -24,6 +24,150 @@ function FileGenericIcon() {
   )
 }
 
+type SearchSectionId = 'fuzzy' | 'semantic'
+
+interface SearchRow extends TreeFile {
+  id: string
+  section: SearchSectionId
+  rankScore: number
+}
+
+const EMPTY_SEARCH_RESPONSE: FileSearchResponse = { fuzzy: [], semantic: [] }
+
+function fileName(path: string): string {
+  return path.split('/').pop() ?? path
+}
+
+function fileStem(name: string): string {
+  return name.replace(/\.[^/.]+$/, '')
+}
+
+function normalized(value: string | null | undefined): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function nameMatchScore(candidate: string | null | undefined, query: string): number {
+  const value = normalized(candidate)
+  if (!value || !query) return 0
+  if (value === query) return 10000
+  if (value.startsWith(query)) return 9000
+  if (value.includes(query)) return 8000
+  return 0
+}
+
+function metadataMatchScore(values: Array<string | null | undefined>, query: string): number {
+  let score = 0
+  for (const raw of values) {
+    const value = normalized(raw)
+    if (!value || !query) continue
+    if (value === query) score = Math.max(score, 5000)
+    else if (value.startsWith(query)) score = Math.max(score, 4700)
+    else if (value.includes(query)) score = Math.max(score, 4400)
+  }
+  return score
+}
+
+function localMatchScore(path: string, metaMap: Record<string, DocMeta>, query: string): number {
+  const meta = metaMap[path]
+  const name = fileName(path)
+  const stem = fileStem(name)
+  const project = projectFromPath(path)
+  const nameScore = Math.max(
+    nameMatchScore(name, query),
+    nameMatchScore(stem, query),
+    nameMatchScore(meta?.title, query)
+  )
+  if (nameScore > 0) return nameScore
+
+  const metadataScore = metadataMatchScore([project, ...(meta?.tags ?? [])], query)
+  if (metadataScore > 0) return metadataScore
+
+  return normalized(path).includes(query) ? 3000 : 0
+}
+
+function contentMatchScore(hit: FileSearchHit): number {
+  const rawScore = Number.isFinite(hit.score) ? hit.score : 0
+  const matchedChunks = hit.matched_chunks ?? 1
+  const exactMatches = hit.exact_matches ?? 0
+  const headingMatches = hit.heading_matches ?? 0
+  if (headingMatches > 0) {
+    return 7600 + Math.min(headingMatches, 10) * 25 + Math.min(exactMatches, 20) * 10
+  }
+  if (exactMatches > 0) {
+    return 6500 + Math.min(exactMatches, 20) * 35 + Math.min(matchedChunks, 20) * 5
+  }
+  return Math.min(3900, 1000 + rawScore * 120 + Math.min(matchedChunks, 20) * 45)
+}
+
+function rankHit(hit: FileSearchHit, metaMap: Record<string, DocMeta>, query: string): number {
+  const localScore = localMatchScore(hit.path, metaMap, query)
+  const contentScore = contentMatchScore(hit)
+  return localScore > 0 ? localScore + Math.min(contentScore, 500) : contentScore
+}
+
+function compareSearchRows(a: SearchRow, b: SearchRow): number {
+  if (b.rankScore !== a.rankScore) return b.rankScore - a.rankScore
+  return (a.title ?? a.name).localeCompare(b.title ?? b.name)
+}
+
+function rowFromPath(path: string, metaMap: Record<string, DocMeta>, query: string): SearchRow {
+  const meta = metaMap[path]
+  return {
+    id: `fuzzy:${path}`,
+    kind: 'file',
+    name: fileName(path),
+    path,
+    title: meta?.title ?? null,
+    tags: meta?.tags ?? [],
+    section: 'fuzzy',
+    rankScore: localMatchScore(path, metaMap, query),
+  }
+}
+
+function rowFromHit(
+  hit: FileSearchHit,
+  section: SearchSectionId,
+  metaMap: Record<string, DocMeta>,
+  query: string
+): SearchRow {
+  const meta = metaMap[hit.path]
+  return {
+    id: `${section}:${hit.path}`,
+    kind: 'file',
+    name: fileName(hit.path),
+    path: hit.path,
+    title: hit.title ?? meta?.title ?? null,
+    tags: hit.tags.length ? hit.tags : meta?.tags ?? [],
+    section,
+    rankScore: section === 'fuzzy'
+      ? rankHit(hit, metaMap, query)
+      : hit.score,
+  }
+}
+
+function mergeRows(primary: SearchRow[], fallback: SearchRow[]): SearchRow[] {
+  const seen = new Set<string>()
+  const rows: SearchRow[] = []
+  for (const row of [...primary, ...fallback]) {
+    if (seen.has(row.path)) continue
+    seen.add(row.path)
+    rows.push(row)
+  }
+  return rows
+}
+
+function formatSearchErrors(errors: FileSearchResponse['errors']): string | null {
+  const modes = Object.keys(errors ?? {}) as SearchSectionId[]
+  if (modes.length === 0) return null
+  if (modes.length > 1) return 'Content search unavailable.'
+  return `${modes[0] === 'semantic' ? 'Semantic' : 'Fuzzy'} search unavailable.`
+}
+
+function projectFromPath(path: string): string {
+  const [project] = path.split('/')
+  return project || 'root'
+}
+
 export function FilesView() {
   const [allFiles, setAllFiles] = useState<string[]>([])
   const [docs, setDocs] = useState<DocMeta[]>([])
@@ -33,6 +177,9 @@ export function FilesView() {
     () => localStorage.getItem('filesView:selectedPath')
   )
   const [search, setSearch] = useState('')
+  const [contentSearch, setContentSearch] = useState<FileSearchResponse>(EMPTY_SEARCH_RESPONSE)
+  const [contentSearchLoading, setContentSearchLoading] = useState(false)
+  const [contentSearchError, setContentSearchError] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
@@ -98,13 +245,15 @@ export function FilesView() {
   const previewOnlyCount = Math.max(0, allFiles.length - indexedCount)
   const selectedMeta = selectedPath ? metaMap[selectedPath] ?? null : null
 
-  const query = search.trim().toLowerCase()
-  const filteredFiles: TreeFile[] = query === ''
+  const rawQuery = search.trim()
+  const query = rawQuery.toLowerCase()
+  const canSearchContent = rawQuery.length >= 2
+  const localFuzzyRows: SearchRow[] = query === ''
     ? []
     : allFiles
         .filter(path => {
           const meta = metaMap[path]
-          const name = path.split('/').pop() ?? path
+          const name = fileName(path)
           return (
             path.toLowerCase().includes(query) ||
             name.toLowerCase().includes(query) ||
@@ -112,24 +261,74 @@ export function FilesView() {
             (meta?.tags ?? []).some(t => t.toLowerCase().includes(query))
           )
         })
-        .map(path => {
-          const meta = metaMap[path]
-          return {
-            kind: 'file' as const,
-            name: path.split('/').pop() ?? path,
-            path,
-            title: meta?.title ?? null,
-            tags: meta?.tags ?? [],
-          }
+        .map(path => rowFromPath(path, metaMap, query))
+        .filter(row => row.rankScore > 0)
+  const fuzzyRows = mergeRows(
+    contentSearch.fuzzy.map(hit => rowFromHit(hit, 'fuzzy', metaMap, query)),
+    localFuzzyRows
+  ).sort(compareSearchRows)
+  const semanticRows = contentSearch.semantic.map(hit => rowFromHit(hit, 'semantic', metaMap, query))
+  const searchSections: Array<{ id: SearchSectionId; label: string; rows: SearchRow[] }> = query === ''
+    ? []
+    : [
+        { id: 'fuzzy', label: 'Fuzzy', rows: fuzzyRows },
+        ...(canSearchContent ? [{ id: 'semantic' as const, label: 'Semantic', rows: semanticRows }] : []),
+      ]
+  const searchRows = searchSections.flatMap(section => section.rows)
+
+  useEffect(() => {
+    if (!canSearchContent) {
+      setContentSearch(EMPTY_SEARCH_RESPONSE)
+      setContentSearchLoading(false)
+      setContentSearchError(null)
+      return
+    }
+
+    const controller = new AbortController()
+    let cancelled = false
+    setContentSearchLoading(true)
+    setContentSearchError(null)
+    setContentSearch(EMPTY_SEARCH_RESPONSE)
+
+    const timeout = window.setTimeout(() => {
+      searchFiles(rawQuery, controller.signal)
+        .then(result => {
+          if (cancelled) return
+          setContentSearch(result)
+          setContentSearchError(formatSearchErrors(result.errors))
         })
+        .catch(e => {
+          if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) return
+          setContentSearch(EMPTY_SEARCH_RESPONSE)
+          setContentSearchError(e instanceof Error ? e.message : String(e))
+        })
+        .finally(() => {
+          if (!cancelled) setContentSearchLoading(false)
+        })
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+      controller.abort()
+    }
+  }, [canSearchContent, rawQuery])
 
   // Reset the keyboard highlight to the top whenever the query changes
   useEffect(() => { setActiveIndex(0) }, [query])
+
+  useEffect(() => {
+    setActiveIndex(i => Math.min(i, Math.max(searchRows.length - 1, 0)))
+  }, [searchRows.length])
 
   // Keep the highlighted result scrolled into view as arrows move it
   useEffect(() => {
     itemRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex])
+
+  useEffect(() => {
+    itemRefs.current.length = searchRows.length
+  }, [searchRows.length])
 
   function handleSearchKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape' && search) {
@@ -137,16 +336,16 @@ export function FilesView() {
       setSearch('')
       return
     }
-    if (filteredFiles.length === 0) return
+    if (searchRows.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActiveIndex(i => Math.min(i + 1, filteredFiles.length - 1))
+      setActiveIndex(i => Math.min(i + 1, searchRows.length - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActiveIndex(i => Math.max(i - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const file = filteredFiles[activeIndex]
+      const file = searchRows[activeIndex]
       if (file) setSelectedPath(file.path)
     }
   }
@@ -163,14 +362,14 @@ export function FilesView() {
               {loadError
                 ? 'Files unavailable'
                 : query
-                  ? `${filteredFiles.length} of ${allFiles.length} files`
+                  ? `${searchRows.length} search results${contentSearchLoading ? ' / searching' : ''}`
                   : `${allFiles.length} files / ${indexedCount} indexed${previewOnlyCount ? ` / ${previewOnlyCount} preview` : ''}`}
             </p>
           )}
           {!loading && !loadError && (
             <TextField.Root
               size="1"
-              placeholder="Filter files…"
+              placeholder="Search files and content…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={handleSearchKeyDown}
@@ -210,44 +409,53 @@ export function FilesView() {
         )}
         {!loading && !loadError && allFiles.length > 0 && (
           query ? (
-            <div className="files-tree-scroll">
-              {filteredFiles.length === 0 ? (
-                <p className="files-route-message">No files match.</p>
-              ) : filteredFiles.map((file, idx) => {
-                const isSelected = file.path === selectedPath
-                const isActive = idx === activeIndex
-                const meta = metaMap[file.path]
-                const ext = file.name.split('.').pop()?.toUpperCase() ?? 'FILE'
-                const tags = meta?.tags ?? []
-                return (
-                  <Tooltip key={file.path} content={file.name} side="right" delayDuration={600}>
-                    <button
-                      ref={el => { itemRefs.current[idx] = el }}
-                      className={
-                        `file-tree-button file-tree-button--file file-search-row` +
-                        `${isSelected ? ' file-tree-button--selected' : ''}` +
-                        `${isActive && !isSelected ? ' file-tree-button--active' : ''}`
-                      }
-                      onClick={() => { setSelectedPath(file.path); setActiveIndex(idx) }}
-                      onMouseEnter={() => setActiveIndex(idx)}
-                    >
-                      {file.name.toLowerCase().endsWith('.md') ? <FileDocIcon /> : <FileGenericIcon />}
-                      <span className="file-search-body">
-                        <span className="file-search-title">{file.title ?? file.name}</span>
-                        <span className="file-search-path">{file.path}</span>
-                        <span className="file-search-badges">
-                          <span className={`files-pill ${meta ? 'files-pill--indexed' : 'files-pill--preview'}`}>
-                            {meta ? `${meta.chunks} chunks` : `${ext} preview`}
+            <div className="files-tree-scroll files-search-results">
+              {contentSearchError && (
+                <p className="files-route-message files-route-message--compact">
+                  {contentSearchError}
+                </p>
+              )}
+              {searchSections.map(section => (
+                <section className="files-search-section" key={section.id}>
+                  <div className="files-search-section-header">
+                    <span>{section.label}</span>
+                    <span className="files-search-section-count">{section.rows.length}</span>
+                    {contentSearchLoading && canSearchContent && <Spinner size="1" />}
+                  </div>
+                  {section.rows.length === 0 ? (
+                    <p className="files-route-message files-route-message--compact">
+                      {contentSearchLoading && canSearchContent ? 'Searching…' : 'No matches.'}
+                    </p>
+                  ) : section.rows.map(file => {
+                    const idx = searchRows.indexOf(file)
+                    const isSelected = file.path === selectedPath
+                    const isActive = idx === activeIndex
+                    const project = projectFromPath(file.path)
+                    return (
+                      <Tooltip key={file.id} content={file.path} side="right" delayDuration={600}>
+                        <button
+                          ref={el => { if (idx >= 0) itemRefs.current[idx] = el }}
+                          className={
+                            `file-tree-button file-tree-button--file file-search-row` +
+                            `${isSelected ? ' file-tree-button--selected' : ''}` +
+                            `${isActive && !isSelected ? ' file-tree-button--active' : ''}`
+                          }
+                          onClick={() => { setSelectedPath(file.path); setActiveIndex(idx) }}
+                          onMouseEnter={() => setActiveIndex(idx)}
+                        >
+                          {file.name.toLowerCase().endsWith('.md') ? <FileDocIcon /> : <FileGenericIcon />}
+                          <span className="file-search-body">
+                            <span className="file-search-title-row">
+                              <span className="file-search-title">{file.title ?? file.name}</span>
+                              <span className="files-pill files-pill--project">{project}</span>
+                            </span>
                           </span>
-                          {tags.slice(0, 3).map(tag => (
-                            <span className="files-pill" key={tag}>{tag}</span>
-                          ))}
-                        </span>
-                      </span>
-                    </button>
-                  </Tooltip>
-                )
-              })}
+                        </button>
+                      </Tooltip>
+                    )
+                  })}
+                </section>
+              ))}
             </div>
           ) : (
             <FolderTree

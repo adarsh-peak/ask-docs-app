@@ -29,6 +29,24 @@ export interface DocMeta {
   folder: string
 }
 
+export interface FileSearchHit {
+  path: string
+  title: string | null
+  folder: string | null
+  tags: string[]
+  snippet: string
+  score: number
+  matched_chunks?: number
+  exact_matches?: number
+  heading_matches?: number
+}
+
+export interface FileSearchResponse {
+  fuzzy: FileSearchHit[]
+  semantic: FileSearchHit[]
+  errors?: Partial<Record<'fuzzy' | 'semantic', string>>
+}
+
 export interface TreeFolder {
   kind: 'folder'
   name: string

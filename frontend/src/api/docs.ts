@@ -1,4 +1,4 @@
-import type { DocMeta } from '../types'
+import type { DocMeta, FileSearchResponse } from '../types'
 
 export async function fetchDocs(): Promise<DocMeta[]> {
   const r = await fetch('/docs')
@@ -22,4 +22,18 @@ export async function fetchAllFiles(): Promise<string[]> {
   const r = await fetch('/api/files')
   if (!r.ok) throw new Error(`/api/files failed: ${r.status}`)
   return ((await r.json()) as { files: string[] }).files
+}
+
+export async function searchFiles(
+  query: string,
+  signal?: AbortSignal
+): Promise<FileSearchResponse> {
+  const r = await fetch('/api/files/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, top_k: 8 }),
+    signal,
+  })
+  if (!r.ok) throw new Error(`/api/files/search failed: ${r.status}`)
+  return r.json()
 }
