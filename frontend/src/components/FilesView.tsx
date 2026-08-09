@@ -24,6 +24,16 @@ function FileGenericIcon() {
   )
 }
 
+function PanelToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1.5" y="2" width="10" height="9" rx="1.5" />
+      <path d="M5 2v9" />
+      {collapsed ? <path d="M7 5l2 1.5L7 8" /> : <path d="M9 5l-2 1.5L9 8" />}
+    </svg>
+  )
+}
+
 type SearchSectionId = 'fuzzy' | 'semantic'
 
 interface SearchRow extends TreeFile {
@@ -176,6 +186,9 @@ export function FilesView() {
   const [selectedPath, setSelectedPath] = useState<string | null>(
     () => localStorage.getItem('filesView:selectedPath')
   )
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem('filesView:sidebarCollapsed') === '1'
+  )
   const [search, setSearch] = useState('')
   const [contentSearch, setContentSearch] = useState<FileSearchResponse>(EMPTY_SEARCH_RESPONSE)
   const [contentSearchLoading, setContentSearchLoading] = useState(false)
@@ -220,6 +233,14 @@ export function FilesView() {
     if (selectedPath) localStorage.setItem('filesView:selectedPath', selectedPath)
     else localStorage.removeItem('filesView:selectedPath')
   }, [selectedPath])
+
+  useEffect(() => {
+    localStorage.setItem('filesView:sidebarCollapsed', sidebarCollapsed ? '1' : '0')
+  }, [sidebarCollapsed])
+
+  function toggleSidebar() {
+    setSidebarCollapsed(prev => !prev)
+  }
 
   // Support graph view clicking a doc node → navigate here with state
   useEffect(() => {
@@ -353,20 +374,31 @@ export function FilesView() {
   return (
     <div className="files-layout">
       {/* Left: folder tree */}
-      <div className="files-sidebar">
+      <div className={`files-sidebar${sidebarCollapsed ? ' files-sidebar--collapsed' : ''}`}>
         <div className="files-sidebar-header">
-          {loading ? (
-            <Spinner size="1" />
-          ) : (
-            <p className="files-sidebar-kicker">
-              {loadError
-                ? 'Files unavailable'
-                : query
-                  ? `${searchRows.length} search results${contentSearchLoading ? ' / searching' : ''}`
-                  : `${allFiles.length} files / ${indexedCount} indexed${previewOnlyCount ? ` / ${previewOnlyCount} preview` : ''}`}
-            </p>
-          )}
-          {!loading && !loadError && (
+          <div className="files-sidebar-header-row">
+            <Tooltip content={sidebarCollapsed ? 'Show file list' : 'Hide file list'} side="right">
+              <IconButton
+                size="1" variant="ghost" color="gray"
+                onClick={toggleSidebar}
+                aria-label={sidebarCollapsed ? 'Show file list' : 'Hide file list'}
+              >
+                <PanelToggleIcon collapsed={sidebarCollapsed} />
+              </IconButton>
+            </Tooltip>
+            {!sidebarCollapsed && (loading ? (
+              <Spinner size="1" />
+            ) : (
+              <p className="files-sidebar-kicker">
+                {loadError
+                  ? 'Files unavailable'
+                  : query
+                    ? `${searchRows.length} search results${contentSearchLoading ? ' / searching' : ''}`
+                    : `${allFiles.length} files / ${indexedCount} indexed${previewOnlyCount ? ` / ${previewOnlyCount} preview` : ''}`}
+              </p>
+            ))}
+          </div>
+          {!sidebarCollapsed && !loading && !loadError && (
             <TextField.Root
               size="1"
               placeholder="Search files and content…"
@@ -399,15 +431,15 @@ export function FilesView() {
             </TextField.Root>
           )}
         </div>
-        {!loading && loadError && (
+        {!sidebarCollapsed && !loading && loadError && (
           <p className="files-route-message">
             Could not load files. {loadError}
           </p>
         )}
-        {!loading && !loadError && allFiles.length === 0 && (
+        {!sidebarCollapsed && !loading && !loadError && allFiles.length === 0 && (
           <p className="files-route-message">No supported files found.</p>
         )}
-        {!loading && !loadError && allFiles.length > 0 && (
+        {!sidebarCollapsed && !loading && !loadError && allFiles.length > 0 && (
           query ? (
             <div className="files-tree-scroll files-search-results">
               {contentSearchError && (

@@ -13,6 +13,11 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 160ms var(--brand-ease-out, ease);
+}
+
+.files-sidebar--collapsed {
+  width: 36px;
 }
 
 .files-sidebar-header {
@@ -22,6 +27,21 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.files-sidebar--collapsed .files-sidebar-header {
+  padding: 12px 6px;
+  border-bottom: none;
+}
+
+.files-sidebar-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.files-sidebar--collapsed .files-sidebar-header-row {
+  justify-content: center;
 }
 
 .files-sidebar-kicker {
