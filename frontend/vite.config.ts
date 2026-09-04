@@ -18,6 +18,7 @@ export default defineConfig({
       '/stats': { target: 'http://127.0.0.1:52891', changeOrigin: true },
       '/docs':  { target: 'http://127.0.0.1:52891', changeOrigin: true },
       '/api/files': { target: 'http://127.0.0.1:52891', changeOrigin: true },
+      '/api/activity': { target: 'http://127.0.0.1:52891', changeOrigin: true },
       '/admin': { target: 'http://127.0.0.1:52891', changeOrigin: true },
     },
   },

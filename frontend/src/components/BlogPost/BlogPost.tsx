@@ -221,6 +221,29 @@ const markdownComponents: Components = {
           </Suspense>
         )
       }
+      // Fenced ```highlight blocks flag a standout/important note — render as
+      // wrapped prose in the warning accent instead of a scrolling code box.
+      if (childClass.split(' ').includes('language-highlight')) {
+        return (
+          <Box
+            mb="4"
+            p="4"
+            style={{
+              borderLeft: '3px solid var(--warning)',
+              backgroundColor: 'var(--warning-bg)',
+              borderRadius: '0 var(--brand-radius-md) var(--brand-radius-md) 0',
+              color: 'var(--warning)',
+              fontFamily: 'var(--brand-font-body)',
+              fontSize: 'var(--brand-text-sm)',
+              lineHeight: 'var(--brand-leading-relaxed)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {extractText((child.props as { children?: ReactNode }).children)}
+          </Box>
+        )
+      }
     }
     return (
       <Box

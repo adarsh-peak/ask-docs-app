@@ -57,6 +57,17 @@
   color: var(--text-muted);
 }
 
+.files-filter-row {
+  display: flex;
+  gap: 6px;
+}
+
+.files-filter-trigger {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+
 .files-route-message {
   margin: 12px 14px;
   font-size: 12px;

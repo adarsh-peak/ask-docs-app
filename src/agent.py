@@ -177,27 +177,29 @@ async def search_files(req: FilesSearchRequest):
     """Proxy to daemon: search indexed file content for the /files route."""
     payload = {"query": req.query, "top_k": req.top_k}
 
-    async def run_search(client: httpx.AsyncClient, mode: str) -> Any:
-        resp = await client.post(f"{APP_URL}/search/{mode}", json=payload)
-        resp.raise_for_status()
-        return resp.json()
-
-    async with httpx.AsyncClient(timeout=45.0) as client:
-        fuzzy, semantic = await asyncio.gather(
-            run_search(client, "fuzzy"),
-            run_search(client, "rag"),
-            return_exceptions=True,
-        )
-
     errors: dict[str, str] = {}
-    if isinstance(fuzzy, Exception):
-        errors["fuzzy"] = str(fuzzy)
-        fuzzy = []
-    if isinstance(semantic, Exception):
-        errors["semantic"] = str(semantic)
-        semantic = []
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        try:
+            resp = await client.post(f"{APP_URL}/search/fuzzy", json=payload)
+            resp.raise_for_status()
+            fuzzy = resp.json()
+        except Exception as e:
+            errors["fuzzy"] = str(e)
+            fuzzy = []
 
-    return {"fuzzy": fuzzy, "semantic": semantic, "errors": errors}
+    return {"fuzzy": fuzzy, "errors": errors}
+
+
+@app.get("/api/activity")
+async def activity():
+    """Proxy to daemon: per-day file modification counts for the home heatmap."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(f"{APP_URL}/activity")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/docs")
@@ -230,6 +232,19 @@ async def get_doc_content(path: str):
             resp = await client.get(f"{APP_URL}/docs/content", params={"path": path})
             resp.raise_for_status()
             return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.put("/docs/content")
+async def save_doc_content(payload: dict):
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            resp = await client.put(f"{APP_URL}/docs/content", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e))
 

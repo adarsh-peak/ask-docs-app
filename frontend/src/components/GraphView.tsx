@@ -301,7 +301,8 @@ export function GraphView() {
         const contentPairs = await Promise.all(
           docs.map(async (doc: DocMeta) => {
             try {
-              return [doc.path, await fetchDocContent(doc.path)] as const
+              const { content } = await fetchDocContent(doc.path)
+              return [doc.path, content] as const
             } catch {
               return [doc.path, ''] as const
             }

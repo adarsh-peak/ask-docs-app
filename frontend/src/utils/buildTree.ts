@@ -48,6 +48,16 @@ export function buildFileTree(
   return root.children
 }
 
+/** Depth-first list of file paths in the same order the tree renders them (folders first, alphabetical). */
+export function flattenTreeFiles(nodes: TreeNode[]): string[] {
+  const paths: string[] = []
+  for (const node of nodes) {
+    if (node.kind === 'folder') paths.push(...flattenTreeFiles(node.children))
+    else paths.push(node.path)
+  }
+  return paths
+}
+
 export function buildTree(docs: DocMeta[]): TreeNode[] {
   const root: TreeFolder = { kind: 'folder', name: '__root__', fullPath: '', children: [] }
 

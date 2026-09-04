@@ -1,5 +1,7 @@
 from __future__ import annotations
+from collections import Counter
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -15,7 +17,7 @@ from .es_client import (
     delete_by_path,
 )
 from .embedder import Embedder
-from .indexer import smart_reindex
+from .indexer import smart_reindex, reindex_file
 
 
 class SearchRequest(BaseModel):
@@ -23,6 +25,11 @@ class SearchRequest(BaseModel):
     tags: list[str] | None = None
     folder: str | None = None
     top_k: int = Field(5, ge=1, le=50)
+
+
+class SaveDocRequest(BaseModel):
+    path: str = Field(..., min_length=1)
+    content: str
 
 
 @asynccontextmanager
@@ -99,9 +106,9 @@ def search_fuzzy(req: SearchRequest) -> list[dict[str, Any]]:
 
 @app.get("/files")
 def list_all_files():
-    """List all supported files in DOCS_ROOT recursively."""
+    """List all supported files in DOCS_ROOT recursively, with last-modified time."""
     root = DOCS_ROOT.resolve()
-    paths = []
+    files = []
     for f in sorted(root.rglob("*")):
         if not f.is_file():
             continue
@@ -110,8 +117,37 @@ def list_all_files():
         rel = f.relative_to(root)
         if any(part in LIST_EXCLUDE_DIRS for part in rel.parts[:-1]):
             continue
-        paths.append(str(rel))
-    return {"files": paths}
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            continue
+        files.append({
+            "path": str(rel),
+            "updated_at": datetime.fromtimestamp(mtime).isoformat(),
+        })
+    return {"files": files}
+
+
+@app.get("/activity")
+def activity():
+    """Per-day file modification counts across DOCS_ROOT, for a GitHub-style heatmap."""
+    root = DOCS_ROOT.resolve()
+    counts: Counter[str] = Counter()
+    for f in root.rglob("*"):
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            continue
+        rel = f.relative_to(root)
+        if any(part in LIST_EXCLUDE_DIRS for part in rel.parts[:-1]):
+            continue
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            continue
+        day = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
+        counts[day] += 1
+    return {"activity": [{"date": d, "count": c} for d, c in sorted(counts.items())]}
 
 
 @app.get("/docs")
@@ -135,7 +171,45 @@ def get_doc_content(path: str = Query(..., min_length=1)):
             content = fh.read().decode("utf-8", errors="replace")
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Could not read file: {e}")
-    return {"path": path, "content": content}
+    stat = abs_path.stat()
+    created_ts = getattr(stat, "st_birthtime", stat.st_ctime)
+    return {
+        "path": path,
+        "content": content,
+        "created_at": datetime.fromtimestamp(created_ts).isoformat(),
+        "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+
+
+@app.put("/docs/content")
+def save_doc_content(req: SaveDocRequest):
+    """Write markdown content to disk and re-index just that file."""
+    try:
+        abs_path = (DOCS_ROOT / req.path).resolve()
+        abs_path.relative_to(DOCS_ROOT.resolve())
+    except (ValueError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if abs_path.suffix.lower() != ".md":
+        raise HTTPException(status_code=400, detail="Only markdown files can be edited")
+    try:
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        abs_path.write_text(req.content, encoding="utf-8")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not write file: {e}")
+
+    try:
+        reindex_result = reindex_file(app.state.es, app.state.embedder, req.path)
+    except Exception as e:
+        reindex_result = {"error": str(e)}
+
+    stat = abs_path.stat()
+    created_ts = getattr(stat, "st_birthtime", stat.st_ctime)
+    return {
+        "path": req.path,
+        "created_at": datetime.fromtimestamp(created_ts).isoformat(),
+        "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        "reindex": reindex_result,
+    }
 
 
 @app.delete("/docs")

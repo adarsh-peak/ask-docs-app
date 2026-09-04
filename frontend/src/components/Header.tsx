@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Popover, Button, AlertDialog, Flex } from '@radix-ui/themes'
+import { Popover, Button, IconButton, Tooltip, AlertDialog, Flex } from '@radix-ui/themes'
 import { Link, useLocation } from 'react-router-dom'
 import { AgMark, ThemeToggle, useTheme } from '@adarsh_goswami/design'
 import { KeyChip } from './KeyChip'
@@ -14,6 +14,7 @@ interface HeaderProps {
   onWipeReindex: () => void
   onUpdateKey: () => void
   onForgetKey: () => void
+  onTestCelebrate: () => void
 }
 
 const NAV_ITEMS = [
@@ -24,7 +25,7 @@ const NAV_ITEMS = [
 
 export function Header({
   docCount, chunkCount, isReindexing, apiKey,
-  onReindex, onWipeReindex, onUpdateKey, onForgetKey,
+  onReindex, onWipeReindex, onUpdateKey, onForgetKey, onTestCelebrate,
 }: HeaderProps) {
   const { theme } = useTheme()
   const { pathname } = useLocation()
@@ -50,7 +51,7 @@ export function Header({
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
       }}>
         {/* Left: brand */}
-        <Link to="/" style={{
+        <Link to="/home" style={{
           display: 'flex', alignItems: 'center', gap: 10,
           flexShrink: 0, textDecoration: 'none',
         }}>
@@ -87,6 +88,16 @@ export function Header({
         {/* Right: toggle, then controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <ThemeToggle aria-label="Toggle color theme" />
+
+          <Tooltip content="Preview celebration animation">
+            <IconButton variant="soft" color="gray" size="2" onClick={onTestCelebrate} aria-label="Preview celebration animation">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 13 6 3l4 4L1 13Z" />
+                <path d="M9 1.5 9.7 3l1.5.7-1.5.7L9 6l-.7-1.6L6.8 3.7l1.5-.7L9 1.5Z" fill="currentColor" stroke="none" />
+                <path d="M12.2 5 12.6 6l1 .4-1 .4-.4 1-.4-1-1-.4 1-.4.4-1Z" fill="currentColor" stroke="none" />
+              </svg>
+            </IconButton>
+          </Tooltip>
 
           <Popover.Root open={indexOpen} onOpenChange={setIndexOpen}>
             <Popover.Trigger>

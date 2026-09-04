@@ -1,4 +1,4 @@
-import type { DocMeta, FileSearchResponse } from '../types'
+import type { ActivityDay, DocContent, DocMeta, FileEntry, FileSearchResponse, SaveDocResponse } from '../types'
 
 export async function fetchDocs(): Promise<DocMeta[]> {
   const r = await fetch('/docs')
@@ -6,11 +6,10 @@ export async function fetchDocs(): Promise<DocMeta[]> {
   return r.json()
 }
 
-export async function fetchDocContent(path: string): Promise<string> {
+export async function fetchDocContent(path: string): Promise<DocContent> {
   const r = await fetch(`/docs/content?path=${encodeURIComponent(path)}`)
   if (!r.ok) throw new Error(`/docs/content failed: ${r.status}`)
-  const j = await r.json()
-  return j.content as string
+  return r.json()
 }
 
 export async function deleteDoc(path: string): Promise<void> {
@@ -18,10 +17,26 @@ export async function deleteDoc(path: string): Promise<void> {
   if (!r.ok) throw new Error(`delete failed: ${r.status}`)
 }
 
-export async function fetchAllFiles(): Promise<string[]> {
+export async function saveDocContent(path: string, content: string): Promise<SaveDocResponse> {
+  const r = await fetch('/docs/content', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  })
+  if (!r.ok) throw new Error(`save failed: ${r.status}`)
+  return r.json()
+}
+
+export async function fetchAllFiles(): Promise<FileEntry[]> {
   const r = await fetch('/api/files')
   if (!r.ok) throw new Error(`/api/files failed: ${r.status}`)
-  return ((await r.json()) as { files: string[] }).files
+  return ((await r.json()) as { files: FileEntry[] }).files
+}
+
+export async function fetchActivity(): Promise<ActivityDay[]> {
+  const r = await fetch('/api/activity')
+  if (!r.ok) throw new Error(`/api/activity failed: ${r.status}`)
+  return ((await r.json()) as { activity: ActivityDay[] }).activity
 }
 
 export async function searchFiles(
@@ -31,7 +46,7 @@ export async function searchFiles(
   const r = await fetch('/api/files/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, top_k: 8 }),
+    body: JSON.stringify({ query, top_k: 20 }),
     signal,
   })
   if (!r.ok) throw new Error(`/api/files/search failed: ${r.status}`)

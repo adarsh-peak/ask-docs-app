@@ -20,6 +20,25 @@ export interface StatsData {
   chunks_indexed: number
 }
 
+export interface ActivityDay {
+  date: string
+  count: number
+}
+
+export interface DocContent {
+  path: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SaveDocResponse {
+  path: string
+  created_at: string
+  updated_at: string
+  reindex: { path: string; chunks: number; embed_errors?: unknown[]; indexed_at: string; error?: string }
+}
+
 export interface DocMeta {
   file: string
   path: string
@@ -43,8 +62,12 @@ export interface FileSearchHit {
 
 export interface FileSearchResponse {
   fuzzy: FileSearchHit[]
-  semantic: FileSearchHit[]
-  errors?: Partial<Record<'fuzzy' | 'semantic', string>>
+  errors?: Partial<Record<'fuzzy', string>>
+}
+
+export interface FileEntry {
+  path: string
+  updated_at: string
 }
 
 export interface TreeFolder {

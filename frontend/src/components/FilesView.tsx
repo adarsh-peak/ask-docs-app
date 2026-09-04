@@ -1,12 +1,22 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Spinner, TextField, IconButton, Tooltip } from '@radix-ui/themes'
+import { Spinner, TextField, IconButton, Tooltip, Select } from '@radix-ui/themes'
 import { FolderTree } from './FolderTree'
 import { DocViewer } from './DocViewer'
 import { fetchDocs, fetchAllFiles, searchFiles } from '../api/docs'
-import { buildFileTree } from '../utils/buildTree'
-import type { DocMeta, TreeNode, TreeFile, FileSearchHit, FileSearchResponse } from '../types'
+import { buildFileTree, flattenTreeFiles } from '../utils/buildTree'
+import type { DocMeta, TreeNode, TreeFile, FileEntry, FileSearchHit, FileSearchResponse } from '../types'
 import './FilesView.css'
+
+type UpdatedFilter = 'all' | '1' | '7' | '30' | '90'
+
+const UPDATED_FILTER_OPTIONS: Array<{ value: UpdatedFilter; label: string }> = [
+  { value: 'all', label: 'Any time' },
+  { value: '1', label: 'Today' },
+  { value: '7', label: 'Past 7 days' },
+  { value: '30', label: 'Past 30 days' },
+  { value: '90', label: 'Past 90 days' },
+]
 
 function FileDocIcon() {
   return (
@@ -34,15 +44,12 @@ function PanelToggleIcon({ collapsed }: { collapsed: boolean }) {
   )
 }
 
-type SearchSectionId = 'fuzzy' | 'semantic'
-
 interface SearchRow extends TreeFile {
   id: string
-  section: SearchSectionId
   rankScore: number
 }
 
-const EMPTY_SEARCH_RESPONSE: FileSearchResponse = { fuzzy: [], semantic: [] }
+const EMPTY_SEARCH_RESPONSE: FileSearchResponse = { fuzzy: [] }
 
 function fileName(path: string): string {
   return path.split('/').pop() ?? path
@@ -129,29 +136,24 @@ function rowFromPath(path: string, metaMap: Record<string, DocMeta>, query: stri
     path,
     title: meta?.title ?? null,
     tags: meta?.tags ?? [],
-    section: 'fuzzy',
     rankScore: localMatchScore(path, metaMap, query),
   }
 }
 
 function rowFromHit(
   hit: FileSearchHit,
-  section: SearchSectionId,
   metaMap: Record<string, DocMeta>,
   query: string
 ): SearchRow {
   const meta = metaMap[hit.path]
   return {
-    id: `${section}:${hit.path}`,
+    id: `fuzzy:${hit.path}`,
     kind: 'file',
     name: fileName(hit.path),
     path: hit.path,
     title: hit.title ?? meta?.title ?? null,
     tags: hit.tags.length ? hit.tags : meta?.tags ?? [],
-    section,
-    rankScore: section === 'fuzzy'
-      ? rankHit(hit, metaMap, query)
-      : hit.score,
+    rankScore: rankHit(hit, metaMap, query),
   }
 }
 
@@ -167,10 +169,7 @@ function mergeRows(primary: SearchRow[], fallback: SearchRow[]): SearchRow[] {
 }
 
 function formatSearchErrors(errors: FileSearchResponse['errors']): string | null {
-  const modes = Object.keys(errors ?? {}) as SearchSectionId[]
-  if (modes.length === 0) return null
-  if (modes.length > 1) return 'Content search unavailable.'
-  return `${modes[0] === 'semantic' ? 'Semantic' : 'Fuzzy'} search unavailable.`
+  return errors?.fuzzy ? 'Content search unavailable.' : null
 }
 
 function projectFromPath(path: string): string {
@@ -179,7 +178,7 @@ function projectFromPath(path: string): string {
 }
 
 export function FilesView() {
-  const [allFiles, setAllFiles] = useState<string[]>([])
+  const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
   const [docs, setDocs] = useState<DocMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -190,6 +189,12 @@ export function FilesView() {
     () => localStorage.getItem('filesView:sidebarCollapsed') === '1'
   )
   const [search, setSearch] = useState('')
+  const [filterProject, setFilterProject] = useState<string>(
+    () => localStorage.getItem('filesView:filterProject') ?? 'all'
+  )
+  const [filterUpdated, setFilterUpdated] = useState<UpdatedFilter>(
+    () => (localStorage.getItem('filesView:filterUpdated') as UpdatedFilter | null) ?? 'all'
+  )
   const [contentSearch, setContentSearch] = useState<FileSearchResponse>(EMPTY_SEARCH_RESPONSE)
   const [contentSearchLoading, setContentSearchLoading] = useState(false)
   const [contentSearchError, setContentSearchError] = useState<string | null>(null)
@@ -217,7 +222,7 @@ export function FilesView() {
     Promise.all([fetchAllFiles(), fetchDocs()])
       .then(([files, d]) => {
         if (cancelled) return
-        setAllFiles(files)
+        setFileEntries(files)
         setDocs(d)
         setLoading(false)
       })
@@ -238,6 +243,14 @@ export function FilesView() {
     localStorage.setItem('filesView:sidebarCollapsed', sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
 
+  useEffect(() => {
+    localStorage.setItem('filesView:filterProject', filterProject)
+  }, [filterProject])
+
+  useEffect(() => {
+    localStorage.setItem('filesView:filterUpdated', filterUpdated)
+  }, [filterUpdated])
+
   function toggleSidebar() {
     setSidebarCollapsed(prev => !prev)
   }
@@ -248,6 +261,8 @@ export function FilesView() {
     if (openPath) setSelectedPath(openPath)
   }, [location.state])
 
+  const allFiles = useMemo(() => fileEntries.map(f => f.path), [fileEntries])
+
   useEffect(() => {
     if (!loading && selectedPath && !allFiles.includes(selectedPath)) {
       setSelectedPath(null)
@@ -255,16 +270,80 @@ export function FilesView() {
   }, [allFiles, loading, selectedPath])
 
   function handleDelete(deletedPath: string) {
-    setAllFiles(prev => prev.filter(p => p !== deletedPath))
+    setFileEntries(prev => prev.filter(f => f.path !== deletedPath))
     setDocs(prev => prev.filter(d => d.path !== deletedPath))
     setSelectedPath(null)
   }
 
+  function handleSaved(savedPath: string) {
+    setFileEntries(prev =>
+      prev.map(f => (f.path === savedPath ? { ...f, updated_at: new Date().toISOString() } : f))
+    )
+    fetchDocs()
+      .then(setDocs)
+      .catch(() => {})
+  }
+
+  const updatedAtByPath = useMemo(
+    () => Object.fromEntries(fileEntries.map(f => [f.path, f.updated_at])),
+    [fileEntries]
+  )
+  const projectOptions = useMemo(
+    () => Array.from(new Set(allFiles.map(projectFromPath))).sort(),
+    [allFiles]
+  )
+  const matchesFilters = useMemo(() => {
+    const maxAgeDays = filterUpdated === 'all' ? null : Number(filterUpdated)
+    return (path: string): boolean => {
+      if (filterProject !== 'all' && projectFromPath(path) !== filterProject) return false
+      if (maxAgeDays !== null) {
+        const updatedAt = updatedAtByPath[path]
+        if (!updatedAt) return false
+        const ageDays = (Date.now() - new Date(updatedAt).getTime()) / 86_400_000
+        if (ageDays > maxAgeDays) return false
+      }
+      return true
+    }
+  }, [filterProject, filterUpdated, updatedAtByPath])
+  const filtersActive = filterProject !== 'all' || filterUpdated !== 'all'
+  const filteredFiles = useMemo(
+    () => (filtersActive ? allFiles.filter(matchesFilters) : allFiles),
+    [allFiles, filtersActive, matchesFilters]
+  )
+
   const metaMap: Record<string, DocMeta> = Object.fromEntries(docs.map(d => [d.path, d]))
-  const tree: TreeNode[] = buildFileTree(allFiles, metaMap)
+  const tree: TreeNode[] = buildFileTree(filteredFiles, metaMap)
   const indexedCount = docs.length
   const previewOnlyCount = Math.max(0, allFiles.length - indexedCount)
   const selectedMeta = selectedPath ? metaMap[selectedPath] ?? null : null
+
+  // Left/Right arrows step through files in the same order shown in the sidebar tree.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+
+      const flatFiles = flattenTreeFiles(tree)
+      if (flatFiles.length === 0) return
+      const currentIndex = selectedPath ? flatFiles.indexOf(selectedPath) : -1
+      let nextIndex: number
+      if (currentIndex === -1) {
+        nextIndex = 0
+      } else if (e.key === 'ArrowRight') {
+        nextIndex = Math.min(currentIndex + 1, flatFiles.length - 1)
+      } else {
+        nextIndex = Math.max(currentIndex - 1, 0)
+      }
+      if (nextIndex === currentIndex) return
+      e.preventDefault()
+      setSelectedPath(flatFiles[nextIndex])
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [tree, selectedPath])
 
   const rawQuery = search.trim()
   const query = rawQuery.toLowerCase()
@@ -272,6 +351,7 @@ export function FilesView() {
   const localFuzzyRows: SearchRow[] = query === ''
     ? []
     : allFiles
+        .filter(matchesFilters)
         .filter(path => {
           const meta = metaMap[path]
           const name = fileName(path)
@@ -284,18 +364,10 @@ export function FilesView() {
         })
         .map(path => rowFromPath(path, metaMap, query))
         .filter(row => row.rankScore > 0)
-  const fuzzyRows = mergeRows(
-    contentSearch.fuzzy.map(hit => rowFromHit(hit, 'fuzzy', metaMap, query)),
+  const searchRows = mergeRows(
+    contentSearch.fuzzy.filter(hit => matchesFilters(hit.path)).map(hit => rowFromHit(hit, metaMap, query)),
     localFuzzyRows
   ).sort(compareSearchRows)
-  const semanticRows = contentSearch.semantic.map(hit => rowFromHit(hit, 'semantic', metaMap, query))
-  const searchSections: Array<{ id: SearchSectionId; label: string; rows: SearchRow[] }> = query === ''
-    ? []
-    : [
-        { id: 'fuzzy', label: 'Fuzzy', rows: fuzzyRows },
-        ...(canSearchContent ? [{ id: 'semantic' as const, label: 'Semantic', rows: semanticRows }] : []),
-      ]
-  const searchRows = searchSections.flatMap(section => section.rows)
 
   useEffect(() => {
     if (!canSearchContent) {
@@ -394,7 +466,9 @@ export function FilesView() {
                   ? 'Files unavailable'
                   : query
                     ? `${searchRows.length} search results${contentSearchLoading ? ' / searching' : ''}`
-                    : `${allFiles.length} files / ${indexedCount} indexed${previewOnlyCount ? ` / ${previewOnlyCount} preview` : ''}`}
+                    : filtersActive
+                      ? `${filteredFiles.length} of ${allFiles.length} files`
+                      : `${allFiles.length} files / ${indexedCount} indexed${previewOnlyCount ? ` / ${previewOnlyCount} preview` : ''}`}
               </p>
             ))}
           </div>
@@ -430,6 +504,31 @@ export function FilesView() {
               )}
             </TextField.Root>
           )}
+          {!sidebarCollapsed && !loading && !loadError && (
+            <div className="files-filter-row">
+              <Select.Root size="1" value={filterProject} onValueChange={setFilterProject}>
+                <Select.Trigger variant="surface" className="files-filter-trigger" />
+                <Select.Content>
+                  <Select.Item value="all">All projects</Select.Item>
+                  {projectOptions.map(project => (
+                    <Select.Item key={project} value={project}>{project}</Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <Select.Root
+                size="1"
+                value={filterUpdated}
+                onValueChange={v => setFilterUpdated(v as UpdatedFilter)}
+              >
+                <Select.Trigger variant="surface" className="files-filter-trigger" />
+                <Select.Content>
+                  {UPDATED_FILTER_OPTIONS.map(opt => (
+                    <Select.Item key={opt.value} value={opt.value}>{opt.label}</Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </div>
+          )}
         </div>
         {!sidebarCollapsed && !loading && loadError && (
           <p className="files-route-message">
@@ -447,47 +546,44 @@ export function FilesView() {
                   {contentSearchError}
                 </p>
               )}
-              {searchSections.map(section => (
-                <section className="files-search-section" key={section.id}>
-                  <div className="files-search-section-header">
-                    <span>{section.label}</span>
-                    <span className="files-search-section-count">{section.rows.length}</span>
-                    {contentSearchLoading && canSearchContent && <Spinner size="1" />}
-                  </div>
-                  {section.rows.length === 0 ? (
-                    <p className="files-route-message files-route-message--compact">
-                      {contentSearchLoading && canSearchContent ? 'Searching…' : 'No matches.'}
-                    </p>
-                  ) : section.rows.map(file => {
-                    const idx = searchRows.indexOf(file)
-                    const isSelected = file.path === selectedPath
-                    const isActive = idx === activeIndex
-                    const project = projectFromPath(file.path)
-                    return (
-                      <Tooltip key={file.id} content={file.path} side="right" delayDuration={600}>
-                        <button
-                          ref={el => { if (idx >= 0) itemRefs.current[idx] = el }}
-                          className={
-                            `file-tree-button file-tree-button--file file-search-row` +
-                            `${isSelected ? ' file-tree-button--selected' : ''}` +
-                            `${isActive && !isSelected ? ' file-tree-button--active' : ''}`
-                          }
-                          onClick={() => { setSelectedPath(file.path); setActiveIndex(idx) }}
-                          onMouseEnter={() => setActiveIndex(idx)}
-                        >
-                          {file.name.toLowerCase().endsWith('.md') ? <FileDocIcon /> : <FileGenericIcon />}
-                          <span className="file-search-body">
-                            <span className="file-search-title-row">
-                              <span className="file-search-title">{file.title ?? file.name}</span>
-                              <span className="files-pill files-pill--project">{project}</span>
-                            </span>
+              <section className="files-search-section">
+                <div className="files-search-section-header">
+                  <span>Results</span>
+                  <span className="files-search-section-count">{searchRows.length}</span>
+                  {contentSearchLoading && canSearchContent && <Spinner size="1" />}
+                </div>
+                {searchRows.length === 0 ? (
+                  <p className="files-route-message files-route-message--compact">
+                    {contentSearchLoading && canSearchContent ? 'Searching…' : 'No matches.'}
+                  </p>
+                ) : searchRows.map((file, idx) => {
+                  const isSelected = file.path === selectedPath
+                  const isActive = idx === activeIndex
+                  const project = projectFromPath(file.path)
+                  return (
+                    <Tooltip key={file.id} content={file.path} side="right" delayDuration={600}>
+                      <button
+                        ref={el => { itemRefs.current[idx] = el }}
+                        className={
+                          `file-tree-button file-tree-button--file file-search-row` +
+                          `${isSelected ? ' file-tree-button--selected' : ''}` +
+                          `${isActive && !isSelected ? ' file-tree-button--active' : ''}`
+                        }
+                        onClick={() => { setSelectedPath(file.path); setActiveIndex(idx) }}
+                        onMouseEnter={() => setActiveIndex(idx)}
+                      >
+                        {file.name.toLowerCase().endsWith('.md') ? <FileDocIcon /> : <FileGenericIcon />}
+                        <span className="file-search-body">
+                          <span className="file-search-title-row">
+                            <span className="file-search-title">{file.title ?? file.name}</span>
+                            <span className="files-pill files-pill--project">{project}</span>
                           </span>
-                        </button>
-                      </Tooltip>
-                    )
-                  })}
-                </section>
-              ))}
+                        </span>
+                      </button>
+                    </Tooltip>
+                  )
+                })}
+              </section>
             </div>
           ) : (
             <FolderTree
@@ -507,6 +603,8 @@ export function FilesView() {
           onDelete={handleDelete}
           allFiles={allFiles}
           onNavigate={setSelectedPath}
+          onSaved={handleSaved}
+          onEnterEdit={() => setSidebarCollapsed(true)}
         />
       </div>
     </div>

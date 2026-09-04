@@ -1,0 +1,95 @@
+.doc-editor-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.doc-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 40px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.doc-editor-toolbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--brand-font-body);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.doc-editor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning, #e0a000);
+  flex-shrink: 0;
+}
+
+.doc-editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-editor-panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.doc-editor-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.doc-editor-pane--source {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.doc-editor-pane--source .cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+
+.doc-editor-pane--source .cm-scroller {
+  font-family: var(--brand-font-mono);
+  line-height: 1.6;
+}
+
+.doc-editor-pane--preview {
+  padding: 28px 40px 64px;
+}
+
+@media (max-width: 960px) {
+  .doc-editor-panes {
+    grid-template-columns: 1fr;
+    grid-auto-rows: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .doc-editor-pane--source {
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    height: 45vh;
+  }
+}
+
+@media (max-width: 760px) {
+  .doc-editor-toolbar {
+    padding: 10px 20px;
+  }
+
+  .doc-editor-pane--preview {
+    padding: 22px 20px 56px;
+  }
+}

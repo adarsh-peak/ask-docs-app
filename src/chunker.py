@@ -46,6 +46,27 @@ def _split_sections(text: str) -> list[str]:
     return parts or [text.strip()]
 
 
+def _hard_split(text: str, limit: int) -> list[str]:
+    """Last-resort split for a single paragraph/line with no blank-line
+    breaks, so no chunk can exceed the embedding model's context length."""
+    lines = text.split("\n")
+    out: list[str] = []
+    buf = ""
+    for line in lines:
+        candidate = (buf + "\n" + line) if buf else line
+        if len(candidate) > limit and buf:
+            out.append(buf)
+            buf = line
+        else:
+            buf = candidate
+        while len(buf) > limit:
+            out.append(buf[:limit])
+            buf = buf[limit:]
+    if buf:
+        out.append(buf)
+    return out
+
+
 def _split_long(section: str, limit: int) -> list[str]:
     if len(section) <= limit:
         return [section]
@@ -61,7 +82,7 @@ def _split_long(section: str, limit: int) -> list[str]:
             buf = candidate
     if buf:
         out.append(buf)
-    return out
+    return [piece for chunk in out for piece in (_hard_split(chunk, limit) if len(chunk) > limit else [chunk])]
 
 
 def chunk_file(rel_path: str, abs_path: Path) -> list[Chunk]:

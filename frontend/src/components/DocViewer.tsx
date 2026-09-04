@@ -1,10 +1,48 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Spinner, Callout, AlertDialog, Button, Flex } from '@radix-ui/themes'
+import { Spinner, Callout, AlertDialog, Button, IconButton, Flex, Tooltip } from '@radix-ui/themes'
 import { BlogPost } from './BlogPost'
+import { DocEditor } from './DocEditor'
 import { fetchDocContent, deleteDoc } from '../api/docs'
 import { makeWikiResolver } from '../utils/wikiLink'
 import { DocOutline } from './DocOutline'
 import type { DocMeta } from '../types'
+
+const iconProps = {
+  width: 15,
+  height: 15,
+  viewBox: '0 0 15 15',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+}
+
+const CopyIcon = () => (
+  <svg {...iconProps}>
+    <path d="M5.5 5.5V2.5C5.5 1.94772 5.94772 1.5 6.5 1.5H12.5C13.0523 1.5 13.5 1.94772 13.5 2.5V9.5C13.5 10.0523 13.0523 10.5 12.5 10.5H10.5M2.5 5.5H8.5C9.05228 5.5 9.5 5.94772 9.5 6.5V12.5C9.5 13.0523 9.05228 13.5 8.5 13.5H2.5C1.94772 13.5 1.5 13.0523 1.5 12.5V6.5C1.5 5.94772 1.94772 5.5 2.5 5.5Z" />
+  </svg>
+)
+
+const CheckIcon = () => (
+  <svg {...iconProps}>
+    <path d="M2.5 7.5L6 11L12.5 3.5" />
+  </svg>
+)
+
+const EditIcon = () => (
+  <svg {...iconProps}>
+    <path d="M11.5 2.5a1.5 1.5 0 0 1 2 2l-8 8L2 13.5l1-3.5 8.5-8.5Z" />
+  </svg>
+)
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
 
 interface DocViewerProps {
   path: string | null
@@ -14,6 +52,10 @@ interface DocViewerProps {
   allFiles?: string[]
   /** Open another doc (e.g. when a wiki-link is clicked). */
   onNavigate?: (path: string) => void
+  /** Called after a successful save, so parents can refresh index metadata. */
+  onSaved?: (path: string) => void
+  /** Called when the user opens the editor (e.g. to collapse the sidebar). */
+  onEnterEdit?: () => void
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -24,12 +66,16 @@ function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function DocViewer({ path, meta, onDelete, allFiles, onNavigate }: DocViewerProps) {
+export function DocViewer({ path, meta, onDelete, allFiles, onNavigate, onSaved, onEnterEdit }: DocViewerProps) {
   const [content, setContent] = useState<string | null>(null)
+  const [createdAt, setCreatedAt] = useState<string | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const resolveWikiLink = useMemo(() => makeWikiResolver(allFiles ?? []), [allFiles])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [editing, setEditing] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -37,25 +83,35 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate }: DocVie
   const isMarkdown = ext === 'md'
   const isSvg = ext === 'svg'
   const fileName = path?.split('/').pop() ?? ''
-  const displayTitle = meta?.title || fileName
+  const displayTitle = fileName
   const folderPath = path?.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
   const fileType = ext ? ext.toUpperCase() : 'FILE'
+
+  useEffect(() => {
+    setEditing(false)
+  }, [path])
 
   useEffect(() => {
     if (!path || (!isMarkdown && !isSvg)) {
       setLoading(false)
       setContent(null)
+      setCreatedAt(null)
+      setUpdatedAt(null)
       setError(null)
       return
     }
     let cancelled = false
     setLoading(true)
     setContent(null)
+    setCreatedAt(null)
+    setUpdatedAt(null)
     setError(null)
     fetchDocContent(path)
       .then(c => {
         if (cancelled) return
-        setContent(c)
+        setContent(c.content)
+        setCreatedAt(c.created_at)
+        setUpdatedAt(c.updated_at)
         setLoading(false)
       })
       .catch(e => {
@@ -65,6 +121,13 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate }: DocVie
       })
     return () => { cancelled = true }
   }, [path, isMarkdown, isSvg])
+
+  async function handleCopy() {
+    if (!content) return
+    await navigator.clipboard.writeText(content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
 
   async function handleDelete() {
     if (!path) return
@@ -94,6 +157,11 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate }: DocVie
             {meta ? 'Indexed' : isMarkdown ? 'Not indexed' : 'Preview'}
           </span>
           {meta && <span className="doc-status-pill doc-status-pill--indexed">{meta.chunks} chunks</span>}
+          {updatedAt && (
+            <span className="doc-status-pill" title={`Created ${formatDate(createdAt ?? updatedAt)}`}>
+              Updated {formatDate(updatedAt)}
+            </span>
+          )}
           {(meta?.tags ?? []).map(tag => (
             <span className="doc-tag" key={tag}>{tag}</span>
           ))}
@@ -101,6 +169,26 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate }: DocVie
       </div>
 
       <div className="doc-viewer-actions">
+        {isMarkdown && content != null && !editing && (
+          <Tooltip content="Edit markdown">
+            <IconButton
+              size="1"
+              variant="ghost"
+              color="gray"
+              onClick={() => { setEditing(true); onEnterEdit?.() }}
+              aria-label="Edit markdown"
+            >
+              <EditIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+        {isMarkdown && content && (
+          <Tooltip content={copied ? 'Copied' : 'Copy markdown'}>
+            <IconButton size="1" variant="ghost" color="gray" onClick={handleCopy} aria-label="Copy markdown">
+              {copied ? <CheckIcon /> : <CopyIcon />}
+            </IconButton>
+          </Tooltip>
+        )}
         <AlertDialog.Root>
           <AlertDialog.Trigger>
             <Button size="1" variant="ghost" color="red" disabled={deleting}>
@@ -185,6 +273,27 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate }: DocVie
             </div>
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (editing && path) {
+    return (
+      <div className="doc-viewer-shell">
+        <div className="doc-viewer-content" style={{ paddingBottom: 0, flexShrink: 0 }}>
+          {renderHeader()}
+        </div>
+        <DocEditor
+          path={path}
+          initialContent={content ?? ''}
+          onCancel={() => setEditing(false)}
+          onSaved={(saved) => {
+            setContent(saved)
+            setUpdatedAt(new Date().toISOString())
+            setEditing(false)
+            onSaved?.(path)
+          }}
+        />
       </div>
     )
   }
