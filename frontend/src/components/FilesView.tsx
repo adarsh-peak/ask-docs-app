@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Spinner, TextField, IconButton, Tooltip, Select } from '@radix-ui/themes'
+import { Spinner, TextField, IconButton, Tooltip, Select, Button, Popover } from '@radix-ui/themes'
 import { FolderTree } from './FolderTree'
+import { WorkspaceIcon } from './WorkspaceIcon'
 import { DocViewer } from './DocViewer'
-import { fetchDocs, fetchAllFiles, searchFiles } from '../api/docs'
-import { buildFileTree, flattenTreeFiles } from '../utils/buildTree'
+import { NewDocDialog } from './NewDocDialog'
+import { fetchDocs, fetchAllFiles, searchFiles, createDoc } from '../api/docs'
+import { buildFileTree, flattenTreeFiles, collectFolders } from '../utils/buildTree'
 import type { DocMeta, TreeNode, TreeFile, FileEntry, FileSearchHit, FileSearchResponse } from '../types'
 import './FilesView.css'
 
@@ -30,6 +32,14 @@ function FileGenericIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4 }}>
       <path d="M2 1.5A.5.5 0 0 1 2.5 1h5.293a.5.5 0 0 1 .353.146l1.708 1.708a.5.5 0 0 1 .146.353V10.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9z"/>
+    </svg>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M6.5 2v9M2 6.5h9" />
     </svg>
   )
 }
@@ -195,6 +205,8 @@ export function FilesView() {
   const [filterUpdated, setFilterUpdated] = useState<UpdatedFilter>(
     () => (localStorage.getItem('filesView:filterUpdated') as UpdatedFilter | null) ?? 'all'
   )
+  const [newDocOpen, setNewDocOpen] = useState(false)
+  const [autoEditPath, setAutoEditPath] = useState<string | null>(null)
   const [contentSearch, setContentSearch] = useState<FileSearchResponse>(EMPTY_SEARCH_RESPONSE)
   const [contentSearchLoading, setContentSearchLoading] = useState(false)
   const [contentSearchError, setContentSearchError] = useState<string | null>(null)
@@ -202,13 +214,20 @@ export function FilesView() {
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const searchRef = useRef<HTMLInputElement>(null)
   const location = useLocation()
+  useEffect(() => {
+    const state = location.state as { newDocument?: number; searchQuery?: string } | null
+    if (state?.newDocument) setNewDocOpen(true)
+    if (state?.searchQuery !== undefined) { setSearch(state.searchQuery); setSidebarCollapsed(false) }
+  }, [location.state])
+
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        searchRef.current?.focus()
-        searchRef.current?.select()
+        const input = searchRef.current ?? document.querySelector<HTMLInputElement>('.header-search input')
+        input?.focus()
+        input?.select()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -233,6 +252,10 @@ export function FilesView() {
       })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (selectedPath && window.matchMedia('(max-width: 760px)').matches) setSidebarCollapsed(true)
+  }, [selectedPath])
 
   useEffect(() => {
     if (selectedPath) localStorage.setItem('filesView:selectedPath', selectedPath)
@@ -292,6 +315,14 @@ export function FilesView() {
     () => Array.from(new Set(allFiles.map(projectFromPath))).sort(),
     [allFiles]
   )
+  const folderOptions = useMemo(() => collectFolders(allFiles), [allFiles])
+
+  async function handleCreateDoc(folder: string, filename: string, tags: string[]) {
+    const created = await createDoc(folder, filename, tags)
+    setFileEntries(prev => [...prev, { path: created.path, updated_at: created.updated_at }])
+    setAutoEditPath(created.path)
+    setSelectedPath(created.path)
+  }
   const matchesFilters = useMemo(() => {
     const maxAgeDays = filterUpdated === 'all' ? null : Number(filterUpdated)
     return (path: string): boolean => {
@@ -449,15 +480,21 @@ export function FilesView() {
       <div className={`files-sidebar${sidebarCollapsed ? ' files-sidebar--collapsed' : ''}`}>
         <div className="files-sidebar-header">
           <div className="files-sidebar-header-row">
-            <Tooltip content={sidebarCollapsed ? 'Show file list' : 'Hide file list'} side="right">
+            <Button size="1" variant="ghost" color="gray" className="files-toggle"
+              onClick={toggleSidebar} aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? 'Show file list' : 'Hide file list'}>
+              <PanelToggleIcon collapsed={sidebarCollapsed} /><span>Files</span>
+            </Button>
+            <Tooltip content="New markdown file" side="right">
               <IconButton
                 size="1" variant="ghost" color="gray"
-                onClick={toggleSidebar}
-                aria-label={sidebarCollapsed ? 'Show file list' : 'Hide file list'}
+                onClick={() => setNewDocOpen(true)}
+                aria-label="New markdown file"
               >
-                <PanelToggleIcon collapsed={sidebarCollapsed} />
+                <PlusIcon />
               </IconButton>
             </Tooltip>
+            {!sidebarCollapsed && <Popover.Root><Popover.Trigger><IconButton size="1" variant="ghost" color="gray" aria-label="File search and filters" className={filtersActive || query ? 'files-options--active' : undefined}><WorkspaceIcon name="more" /></IconButton></Popover.Trigger><Popover.Content width="310px"><div className="files-options">
             {!sidebarCollapsed && (loading ? (
               <Spinner size="1" />
             ) : (
@@ -471,7 +508,6 @@ export function FilesView() {
                       : `${allFiles.length} files / ${indexedCount} indexed${previewOnlyCount ? ` / ${previewOnlyCount} preview` : ''}`}
               </p>
             ))}
-          </div>
           {!sidebarCollapsed && !loading && !loadError && (
             <TextField.Root
               size="1"
@@ -529,6 +565,9 @@ export function FilesView() {
               </Select.Root>
             </div>
           )}
+          </div></Popover.Content></Popover.Root>}
+          </div>
+          {(filtersActive || query) && !sidebarCollapsed && <Button size="1" variant="ghost" color="gray" onClick={() => { setSearch(''); setFilterProject('all'); setFilterUpdated('all') }}>Clear search &amp; filters</Button>}
         </div>
         {!sidebarCollapsed && !loading && loadError && (
           <p className="files-route-message">
@@ -605,8 +644,17 @@ export function FilesView() {
           onNavigate={setSelectedPath}
           onSaved={handleSaved}
           onEnterEdit={() => setSidebarCollapsed(true)}
+          autoEditPath={autoEditPath}
+          onAutoEditConsumed={() => setAutoEditPath(null)}
         />
       </div>
+
+      <NewDocDialog
+        open={newDocOpen}
+        onOpenChange={setNewDocOpen}
+        folderOptions={folderOptions}
+        onCreate={handleCreateDoc}
+      />
     </div>
   )
 }

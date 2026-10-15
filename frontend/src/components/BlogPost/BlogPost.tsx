@@ -198,7 +198,7 @@ const markdownComponents: Components = {
       size="3"
       mb="4"
       style={{
-        fontFamily: 'var(--brand-font-body)',
+        fontFamily: 'var(--reading-font)',
         color: 'var(--text-primary)',
         lineHeight: 'var(--brand-leading-relaxed)',
         display: 'block',
@@ -229,11 +229,11 @@ const markdownComponents: Components = {
             mb="4"
             p="4"
             style={{
-              borderLeft: '3px solid var(--warning)',
+              borderLeft: '1px solid var(--warning)',
               backgroundColor: 'var(--warning-bg)',
               borderRadius: '0 var(--brand-radius-md) var(--brand-radius-md) 0',
               color: 'var(--warning)',
-              fontFamily: 'var(--brand-font-body)',
+              fontFamily: 'var(--reading-font)',
               fontSize: 'var(--brand-text-sm)',
               lineHeight: 'var(--brand-leading-relaxed)',
               whiteSpace: 'pre-wrap',
@@ -327,7 +327,7 @@ const markdownComponents: Components = {
         paddingLeft: 'var(--sp-4)',
         listStyleType: 'disc',
         color: 'var(--text-primary)',
-        fontFamily: 'var(--brand-font-body)',
+        fontFamily: 'var(--reading-font)',
       }}
     >
       {children}
@@ -340,25 +340,16 @@ const markdownComponents: Components = {
         paddingLeft: 'var(--sp-4)',
         listStyleType: 'decimal',
         color: 'var(--text-primary)',
-        fontFamily: 'var(--brand-font-body)',
+        fontFamily: 'var(--reading-font)',
       }}
     >
       {children}
     </ol>
   ),
   li: ({ children }) => (
-    <Text
-      as="p"
-      size="3"
-      mb="1"
-      style={{
-        fontFamily: 'var(--brand-font-body)',
-        color: 'var(--text-primary)',
-        display: 'list-item',
-      }}
-    >
+    <li className="blog-post__list-item">
       {injectColorSwatches(children)}
-    </Text>
+    </li>
   ),
   blockquote: ({ children }) => (
     <Box
@@ -366,7 +357,7 @@ const markdownComponents: Components = {
       pl="4"
       py="2"
       style={{
-        borderLeft: '2px solid var(--accent)',
+        borderLeft: '1px solid var(--accent)',
         backgroundColor: 'var(--accent-subtle)',
         borderRadius: '0 var(--brand-radius-md) var(--brand-radius-md) 0',
       }}
@@ -380,8 +371,8 @@ const markdownComponents: Components = {
         style={{
           width: '100%',
           borderCollapse: 'collapse',
-          fontSize: 'var(--brand-text-sm)',
-          fontFamily: 'var(--brand-font-body)',
+
+
         }}
       >
         {children}
@@ -395,7 +386,7 @@ const markdownComponents: Components = {
         padding: '8px 12px',
         borderBottom: '1px solid var(--border-mid)',
         color: 'var(--text-primary)',
-        fontWeight: 500,
+        fontWeight: 600,
       }}
     >
       {injectColorSwatches(children)}

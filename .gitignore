@@ -10,5 +10,10 @@ frontend/.vite/
 src/static/assets/
 src/static/index.html
 
-# Claude Code
+# Local agent and browser QA artifacts
 .claude/
+.impeccable/
+.playwright-mcp/
+
+# Bundled copies of frontend/public fonts
+src/static/fonts/

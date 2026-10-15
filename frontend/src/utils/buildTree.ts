@@ -48,6 +48,18 @@ export function buildFileTree(
   return root.children
 }
 
+/** Every distinct folder path (at every depth) that appears across the given file paths, sorted. */
+export function collectFolders(paths: string[]): string[] {
+  const folders = new Set<string>()
+  for (const p of paths) {
+    const segments = p.split('/')
+    for (let i = 1; i < segments.length; i++) {
+      folders.add(segments.slice(0, i).join('/'))
+    }
+  }
+  return Array.from(folders).sort()
+}
+
 /** Depth-first list of file paths in the same order the tree renders them (folders first, alphabetical). */
 export function flattenTreeFiles(nodes: TreeNode[]): string[] {
   const paths: string[] = []

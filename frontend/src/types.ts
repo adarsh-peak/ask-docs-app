@@ -36,7 +36,13 @@ export interface SaveDocResponse {
   path: string
   created_at: string
   updated_at: string
-  reindex: { path: string; chunks: number; embed_errors?: unknown[]; indexed_at: string; error?: string }
+}
+
+export interface CreateDocResponse {
+  path: string
+  content: string
+  created_at: string
+  updated_at: string
 }
 
 export interface DocMeta {

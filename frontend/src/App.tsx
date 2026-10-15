@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Routes, Route } from 'react-router-dom'
-import { CosmicBackground } from './components/CosmicBackground'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Header } from './components/Header'
 import { ChatView } from './components/ChatView'
 import { HomeView } from './components/HomeView'
+import { HowItWorksView } from './components/HowItWorksView'
 import { FilesView } from './components/FilesView'
 import { GraphView } from './components/GraphView'
 import { ApiKeyGate } from './components/ApiKeyGate'
@@ -108,8 +108,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ position: 'relative', zIndex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <CosmicBackground />
+    <div className="app-shell">
       <Header
         docCount={docCount}
         chunkCount={chunkCount}
@@ -121,22 +120,21 @@ export default function App() {
         onForgetKey={onForgetKey}
         onTestCelebrate={() => { setCelebratingCount(docCount); setCelebrating(true); setShowCelebrationModal(true) }}
       />
-      <div style={{
-        flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0,
-        width: '100%', maxWidth: 'var(--brand-layout-container-max)', margin: '0 auto',
-      }}>
+      <main className="app-main" id="main-content">
         <Routes>
-          <Route path="/" element={
+          <Route path="/" element={<Navigate to="/files" replace />} />
+          <Route path="/ask" element={
             <ChatView
               apiKey={apiKey}
               onAddKey={() => setEditingKey(true)}
             />
           } />
           <Route path="/home" element={<HomeView />} />
+          <Route path="/how-it-works" element={<HowItWorksView />} />
           <Route path="/files" element={<FilesView />} />
           <Route path="/graph" element={<GraphView />} />
         </Routes>
-      </div>
+      </main>
       {toast && <Toast text={toast.text} kind={toast.kind} onDone={() => setToast(null)} />}
       {editingKey && <ApiKeyGate onSubmit={onKeySubmit} onClose={() => setEditingKey(false)} />}
       {celebrating && <CelebrationOverlay onDone={() => setCelebrating(false)} />}

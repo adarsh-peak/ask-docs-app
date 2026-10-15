@@ -1,8 +1,21 @@
-import type { ActivityDay, DocContent, DocMeta, FileEntry, FileSearchResponse, SaveDocResponse } from '../types'
+import type { ActivityDay, CreateDocResponse, DocContent, DocMeta, FileEntry, FileSearchResponse, SaveDocResponse } from '../types'
 
 export async function fetchDocs(): Promise<DocMeta[]> {
   const r = await fetch('/docs')
   if (!r.ok) throw new Error(`/docs failed: ${r.status}`)
+  return r.json()
+}
+
+export async function createDoc(folder: string, filename: string, tags: string[]): Promise<CreateDocResponse> {
+  const r = await fetch('/docs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder, filename, tags }),
+  })
+  if (!r.ok) {
+    const detail = await r.json().catch(() => null)
+    throw new Error(typeof detail?.detail === 'string' ? detail.detail : `create failed: ${r.status}`)
+  }
   return r.json()
 }
 

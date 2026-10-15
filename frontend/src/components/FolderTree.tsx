@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Tooltip } from '@radix-ui/themes'
+import { WorkspaceIcon } from './WorkspaceIcon'
 import type { TreeNode, TreeFolder } from '../types'
 
 interface FolderTreeProps {
@@ -19,28 +20,10 @@ function ChevronIcon({ open }: { open: boolean }) {
   )
 }
 
-function FileDocIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{ flexShrink: 0, opacity: 0.5 }}>
-      <path d="M2 1.5A.5.5 0 0 1 2.5 1h5.293a.5.5 0 0 1 .353.146l1.708 1.708a.5.5 0 0 1 .146.353V10.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9z"/>
-    </svg>
-  )
-}
-
-function FileGenericIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4 }}>
-      <path d="M2 1.5A.5.5 0 0 1 2.5 1h5.293a.5.5 0 0 1 .353.146l1.708 1.708a.5.5 0 0 1 .146.353V10.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9z"/>
-    </svg>
-  )
-}
-
-function FolderClosedIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor" style={{ flexShrink: 0, opacity: 0.6 }}>
-      <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h2.379a1.5 1.5 0 0 1 1.06.44l.622.621A1.5 1.5 0 0 0 7.62 3.5H10.5A1.5 1.5 0 0 1 12 5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 1 10V3.5z"/>
-    </svg>
-  )
+function folderColor(path: string) {
+  const palette = ['#efb20a', '#ed792b', '#57974f', '#10a0a8', '#3a78c2', '#9873a3']
+  const hash = Array.from(path.split('/')[0]).reduce((value, char) => value + char.charCodeAt(0), 0)
+  return palette[hash % palette.length]
 }
 
 function getAncestorFolders(path: string): string[] {
@@ -94,13 +77,14 @@ export function FolderTree({ nodes, selectedPath, onSelectFile }: FolderTreeProp
           <button
             className="file-tree-button file-tree-button--folder"
             onClick={() => toggleFolder(folder.fullPath)}
+            aria-expanded={isOpen}
             style={{
-              paddingLeft: 10 + depth * 14,
+              paddingLeft: 10 + depth * 18,
               paddingTop: 5, paddingBottom: 5, paddingRight: 8,
             }}
           >
             <ChevronIcon open={isOpen} />
-            <FolderClosedIcon />
+            <WorkspaceIcon name="folder" size={20} style={{ color: folderColor(folder.fullPath), fill: folderColor(folder.fullPath) }} />
             <span className="file-tree-label">
               {node.name}
             </span>
@@ -119,13 +103,13 @@ export function FolderTree({ nodes, selectedPath, onSelectFile }: FolderTreeProp
           className={`file-tree-button file-tree-button--file${isSelected ? ' file-tree-button--selected' : ''}`}
           onClick={() => onSelectFile(node.path)}
           style={{
-            paddingLeft: 10 + depth * 14,
+            paddingLeft: 26 + depth * 18,
             paddingTop: 5, paddingBottom: 5, paddingRight: 8,
           }}
         >
-          {node.name.toLowerCase().endsWith('.md') ? <FileDocIcon /> : <FileGenericIcon />}
+          <WorkspaceIcon name="file" size={18} />
           <span className="file-tree-label">
-            {node.title ?? node.name}
+            {node.name}
           </span>
         </button>
       </Tooltip>

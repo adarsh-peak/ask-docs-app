@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+import re
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -17,7 +19,7 @@ from .es_client import (
     delete_by_path,
 )
 from .embedder import Embedder
-from .indexer import smart_reindex, reindex_file
+from .indexer import smart_reindex
 
 
 class SearchRequest(BaseModel):
@@ -30,6 +32,12 @@ class SearchRequest(BaseModel):
 class SaveDocRequest(BaseModel):
     path: str = Field(..., min_length=1)
     content: str
+
+
+class CreateDocRequest(BaseModel):
+    folder: str = ""
+    filename: str = Field(..., min_length=1)
+    tags: list[str] = Field(default_factory=list)
 
 
 @asynccontextmanager
@@ -156,6 +164,47 @@ def docs():
     return list_docs(app.state.es)
 
 
+@app.post("/docs")
+def create_doc(req: CreateDocRequest):
+    """Create a new markdown file in the given folder. Indexing happens separately via /reindex."""
+    filename = req.filename.strip().strip("/")
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    if not filename.lower().endswith(".md"):
+        filename += ".md"
+    folder = req.folder.strip().strip("/")
+    rel_path = f"{folder}/{filename}" if folder else filename
+
+    try:
+        abs_path = (DOCS_ROOT / rel_path).resolve()
+        abs_path.relative_to(DOCS_ROOT.resolve())
+    except (ValueError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    title = re.sub(r"[-_]+", " ", abs_path.stem).strip().title() or "Untitled"
+    tags = [t.strip() for t in req.tags if t.strip()]
+    tag_line = " ".join(f"[[{t}]]" for t in tags) if tags else "[[tag]]"
+    content = f"# {title}\n\n\n\n---\n{tag_line}\n"  # two blank lines give room to start writing right under the heading
+
+    try:
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(abs_path, "x", encoding="utf-8") as file:
+            file.write(content)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="A file already exists at that path")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Could not create file: {e}")
+
+    stat = abs_path.stat()
+    created_ts = getattr(stat, "st_birthtime", stat.st_ctime)
+    return {
+        "path": rel_path,
+        "content": content,
+        "created_at": datetime.fromtimestamp(created_ts).isoformat(),
+        "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+
+
 @app.get("/docs/content")
 def get_doc_content(path: str = Query(..., min_length=1)):
     """Return raw markdown content of a doc by its relative path."""
@@ -183,7 +232,7 @@ def get_doc_content(path: str = Query(..., min_length=1)):
 
 @app.put("/docs/content")
 def save_doc_content(req: SaveDocRequest):
-    """Write markdown content to disk and re-index just that file."""
+    """Edit existing markdown. Indexing happens separately via /reindex."""
     try:
         abs_path = (DOCS_ROOT / req.path).resolve()
         abs_path.relative_to(DOCS_ROOT.resolve())
@@ -192,23 +241,23 @@ def save_doc_content(req: SaveDocRequest):
     if abs_path.suffix.lower() != ".md":
         raise HTTPException(status_code=400, detail="Only markdown files can be edited")
     try:
-        abs_path.parent.mkdir(parents=True, exist_ok=True)
-        abs_path.write_text(req.content, encoding="utf-8")
+        # Never create a path: an unlink after open leaves only this descriptor.
+        with open(abs_path, "r+", encoding="utf-8") as fh:
+            fh.seek(0)
+            fh.truncate()
+            fh.write(req.content)
+            fh.flush()
+            stat = os.fstat(fh.fileno())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Could not write file: {e}")
 
-    try:
-        reindex_result = reindex_file(app.state.es, app.state.embedder, req.path)
-    except Exception as e:
-        reindex_result = {"error": str(e)}
-
-    stat = abs_path.stat()
     created_ts = getattr(stat, "st_birthtime", stat.st_ctime)
     return {
         "path": req.path,
         "created_at": datetime.fromtimestamp(created_ts).isoformat(),
         "updated_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-        "reindex": reindex_result,
     }
 
 

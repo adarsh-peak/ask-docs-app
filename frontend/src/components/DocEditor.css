@@ -46,6 +46,10 @@
   grid-template-columns: 1fr 1fr;
 }
 
+.doc-editor-panes--source-only {
+  grid-template-columns: 1fr;
+}
+
 .doc-editor-pane {
   min-width: 0;
   min-height: 0;
@@ -93,3 +97,40 @@
     padding: 22px 20px 56px;
   }
 }
+
+.doc-editor-syntax-help-title {
+  font-family: var(--brand-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.doc-editor-syntax-help table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.doc-editor-syntax-help td {
+  font-family: var(--brand-font-body);
+  font-size: 12px;
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+  color: var(--text-primary, inherit);
+}
+
+.doc-editor-syntax-help td:first-child {
+  white-space: pre;
+}
+
+.doc-editor-syntax-help code {
+  font-family: var(--brand-font-mono);
+  font-size: 11.5px;
+  background: var(--surface-muted, rgba(127, 127, 127, 0.12));
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.doc-editor-toolbar { flex-wrap: wrap; background: var(--bg-base); }
+.doc-editor-toolbar-status { font-size: 15px; }
+.doc-editor-toolbar-actions { flex-wrap: wrap; }
+.doc-editor-pane--source .cm-editor { background: var(--bg-surface); }

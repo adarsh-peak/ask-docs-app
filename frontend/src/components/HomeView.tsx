@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Spinner, Tooltip } from '@radix-ui/themes'
-import { fetchActivity } from '../api/docs'
-import type { ActivityDay } from '../types'
+import { fetchActivity, fetchAllFiles } from '../api/docs'
+import type { ActivityDay, FileEntry } from '../types'
 import './HomeView.css'
+
+const RECENT_FILES_COUNT = 10
 
 const WEEKS = 53
 const DAYS_PER_WEEK = 7
@@ -66,15 +69,51 @@ function formatDateLabel(key: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function fileName(path: string): string {
+  return path.split('/').pop() ?? path
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const minutes = Math.round(diffMs / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.round(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.round(months / 12)}y ago`
+}
+
 export function HomeView() {
+  const navigate = useNavigate()
   const [activity, setActivity] = useState<ActivityDay[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [recentFiles, setRecentFiles] = useState<FileEntry[] | null>(null)
+  const [recentError, setRecentError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     fetchActivity()
       .then(a => { if (!cancelled) setActivity(a) })
       .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)) })
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchAllFiles()
+      .then(files => {
+        if (cancelled) return
+        const filtered = files.filter(f => !f.path.split('/').includes('_tags'))
+        const sorted = [...filtered].sort(
+          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        )
+        setRecentFiles(sorted.slice(0, RECENT_FILES_COUNT))
+      })
+      .catch(e => { if (!cancelled) setRecentError(e instanceof Error ? e.message : String(e)) })
     return () => { cancelled = true }
   }, [])
 
@@ -91,6 +130,7 @@ export function HomeView() {
 
   return (
     <div className="home-layout">
+      <div className="home-activity">
       <div className="home-hero">
         <h1 className="home-title">Docs activity</h1>
         <p className="home-subtitle">
@@ -155,6 +195,38 @@ export function HomeView() {
           </div>
         </div>
       )}
+
+      {!recentError && recentFiles && recentFiles.length > 0 && (
+        <div className="home-card home-recent-card">
+          <div className="home-card-header">
+            <span className="home-card-stat">Recently updated</span>
+          </div>
+          <ul className="home-recent-list">
+            {recentFiles.map(file => (
+              <li key={file.path}>
+                <button
+                  type="button"
+                  className="home-recent-item"
+                  onClick={() => navigate('/files', { state: { openPath: file.path } })}
+                >
+                  <span className="home-recent-name">{fileName(file.path)}</span>
+                  <span className="home-recent-path">{file.path}</span>
+                  <span className="home-recent-time">{formatRelativeTime(file.updated_at)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {recentError && <p className="home-error">Could not load recent files. {recentError}</p>}
+      <section className="home-walkthrough-teaser" aria-labelledby="home-walkthrough-title">
+        <div>
+          <h2 id="home-walkthrough-title">How Ask Docs works</h2>
+          <p>Follow a document from Markdown to a cited answer.</p>
+        </div>
+        <Link to="/how-it-works" className="home-walkthrough-link">Explore the 3D walkthrough</Link>
+      </section>
+      </div>
     </div>
   )
 }

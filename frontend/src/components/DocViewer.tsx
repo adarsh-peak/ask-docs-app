@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { Spinner, Callout, AlertDialog, Button, IconButton, Flex, Tooltip } from '@radix-ui/themes'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useSyncExternalStore } from 'react'
+import { Spinner, Callout, AlertDialog, Button, IconButton, Flex, DropdownMenu } from '@radix-ui/themes'
 import { BlogPost } from './BlogPost'
 import { DocEditor } from './DocEditor'
+import { deleteDocumentAfterSave, isDocumentDeleting, subscribeDocumentDeletions } from './save-coordinator'
 import { fetchDocContent, deleteDoc } from '../api/docs'
 import { makeWikiResolver } from '../utils/wikiLink'
 import { DocOutline } from './DocOutline'
+import { WorkspaceIcon } from './WorkspaceIcon'
 import type { DocMeta } from '../types'
 
 const iconProps = {
@@ -56,6 +58,10 @@ interface DocViewerProps {
   onSaved?: (path: string) => void
   /** Called when the user opens the editor (e.g. to collapse the sidebar). */
   onEnterEdit?: () => void
+  /** When this matches `path` (e.g. right after creating a new file), the editor opens automatically once content loads. */
+  autoEditPath?: string | null
+  /** Called once the auto-edit above has been triggered, so the parent can clear it. */
+  onAutoEditConsumed?: () => void
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -66,18 +72,36 @@ function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function DocViewer({ path, meta, onDelete, allFiles, onNavigate, onSaved, onEnterEdit }: DocViewerProps) {
+export function DocViewer({
+  path,
+  meta,
+  onDelete,
+  allFiles,
+  onNavigate,
+  onSaved,
+  onEnterEdit,
+  autoEditPath,
+  onAutoEditConsumed,
+}: DocViewerProps) {
   const [content, setContent] = useState<string | null>(null)
   const [createdAt, setCreatedAt] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<string | null>(null)
   const resolveWikiLink = useMemo(() => makeWikiResolver(allFiles ?? []), [allFiles])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const deleting = useSyncExternalStore(
+    subscribeDocumentDeletions,
+    () => isDocumentDeleting(path),
+    () => false,
+  )
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const readingPosition = useRef(0)
+  useLayoutEffect(() => { readingPosition.current = 0; if (scrollRef.current) scrollRef.current.scrollTop = 0 }, [path])
+  useLayoutEffect(() => { if (!editing && scrollRef.current) scrollRef.current.scrollTop = readingPosition.current }, [editing])
 
   const ext = path?.split('.').pop()?.toLowerCase() ?? ''
   const isMarkdown = ext === 'md'
@@ -90,6 +114,14 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate, onSaved,
   useEffect(() => {
     setEditing(false)
   }, [path])
+
+  useEffect(() => {
+    if (!deleting && !loading && content !== null && path && autoEditPath && path === autoEditPath) {
+      setEditing(true)
+      onEnterEdit?.()
+      onAutoEditConsumed?.()
+    }
+  }, [deleting, loading, content, path, autoEditPath, onEnterEdit, onAutoEditConsumed])
 
   useEffect(() => {
     if (!path || (!isMarkdown && !isSvg)) {
@@ -130,86 +162,54 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate, onSaved,
   }
 
   async function handleDelete() {
-    if (!path) return
-    setDeleting(true)
+    if (!path || editing || deleting) return
     try {
-      await deleteDoc(path)
+      const result = await deleteDocumentAfterSave(path, deleteDoc)
+      if (!result.ok) throw result.error
       onDelete?.(path)
-      setDeleting(false)
     } catch (e) {
       setError(String(e))
-      setDeleting(false)
     }
   }
 
-  if (!path) return <Centered>Select a file to read it.</Centered>
+  if (!path) return <Centered><div className="library-welcome"><h1>A place for what<br />you want to keep.</h1><p>Select a document from the files to start reading.</p></div></Centered>
 
   const renderHeader = () => (
     <div className="doc-viewer-header">
-      <div className="doc-viewer-title-wrap">
-        <h1 className="doc-viewer-title">{displayTitle}</h1>
-        {folderPath && (
-          <p className="doc-viewer-path" title={path}>{folderPath}</p>
-        )}
-        <div className="doc-viewer-meta">
-          <span className="doc-status-pill">{fileType}</span>
-          <span className={`doc-status-pill ${meta ? 'doc-status-pill--indexed' : 'doc-status-pill--preview'}`}>
-            {meta ? 'Indexed' : isMarkdown ? 'Not indexed' : 'Preview'}
-          </span>
-          {meta && <span className="doc-status-pill doc-status-pill--indexed">{meta.chunks} chunks</span>}
-          {updatedAt && (
-            <span className="doc-status-pill" title={`Created ${formatDate(createdAt ?? updatedAt)}`}>
-              Updated {formatDate(updatedAt)}
-            </span>
-          )}
-          {(meta?.tags ?? []).map(tag => (
-            <span className="doc-tag" key={tag}>{tag}</span>
-          ))}
-        </div>
-      </div>
-
+      <nav className="doc-breadcrumb" aria-label="Document location" title={path}>
+        <span>Files</span><span aria-hidden="true" className="breadcrumb-divider">›</span>
+        {folderPath && <><span className="doc-breadcrumb-folder">{folderPath}</span><span aria-hidden="true" className="breadcrumb-divider">›</span></>}
+        <span className="doc-breadcrumb-file" aria-current="page">{displayTitle}</span>
+      </nav>
       <div className="doc-viewer-actions">
         {isMarkdown && content != null && !editing && (
-          <Tooltip content="Edit markdown">
-            <IconButton
-              size="1"
-              variant="ghost"
-              color="gray"
-              onClick={() => { setEditing(true); onEnterEdit?.() }}
-              aria-label="Edit markdown"
-            >
-              <EditIcon />
-            </IconButton>
-          </Tooltip>
+          <Button size="2" variant="outline" color="gray" className="doc-edit-button" disabled={deleting}
+            onClick={() => { if (isDocumentDeleting(path)) return; readingPosition.current = scrollRef.current?.scrollTop ?? 0; setEditing(true); onEnterEdit?.() }}
+            aria-label="Edit markdown"><EditIcon /> Edit Markdown</Button>
         )}
-        {isMarkdown && content && (
-          <Tooltip content={copied ? 'Copied' : 'Copy markdown'}>
-            <IconButton size="1" variant="ghost" color="gray" onClick={handleCopy} aria-label="Copy markdown">
-              {copied ? <CheckIcon /> : <CopyIcon />}
-            </IconButton>
-          </Tooltip>
-        )}
-        <AlertDialog.Root>
-          <AlertDialog.Trigger>
-            <Button size="1" variant="ghost" color="red" disabled={deleting}>
-              {deleting ? <Spinner size="1" /> : 'Delete'}
-            </Button>
-          </AlertDialog.Trigger>
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger><IconButton size="2" variant="outline" color="gray" aria-label="Document actions"><WorkspaceIcon name="more" /></IconButton></DropdownMenu.Trigger>
+          <DropdownMenu.Content className="doc-actions-menu">
+            {isMarkdown && content != null && <DropdownMenu.Item onSelect={handleCopy}>{copied ? <CheckIcon /> : <CopyIcon />}{copied ? 'Copied' : 'Copy Markdown'}</DropdownMenu.Item>}
+            <DropdownMenu.Item color="red" disabled={editing || deleting} onSelect={() => setDeleteOpen(true)}>Delete file</DropdownMenu.Item>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Label>Document details</DropdownMenu.Label>
+            <div className="doc-viewer-meta">
+              <span className="doc-status-pill">{fileType}</span>
+              <span className={`doc-status-pill ${meta ? 'doc-status-pill--indexed' : 'doc-status-pill--preview'}`}>{meta ? 'Indexed' : isMarkdown ? 'Not indexed' : 'Preview'}</span>
+              {meta && <span className="doc-status-pill">{meta.chunks} chunks</span>}
+              {updatedAt && <span className="doc-status-pill" title={`Created ${formatDate(createdAt ?? updatedAt)}`}>Updated {formatDate(updatedAt)}</span>}
+              {(meta?.tags ?? []).map(tag => <span className="doc-tag" key={tag}>{tag}</span>)}
+            </div>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+        <AlertDialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}>
           <AlertDialog.Content maxWidth="420px">
             <AlertDialog.Title>Delete file</AlertDialog.Title>
-            <AlertDialog.Description size="2">
-              This will permanently delete <strong>{fileName}</strong> from disk
-              and remove indexed chunks for this path. This cannot be undone.
-            </AlertDialog.Description>
+            <AlertDialog.Description size="2">This will permanently delete <strong>{fileName}</strong> from disk and remove indexed chunks for this path. This cannot be undone.</AlertDialog.Description>
             <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray">Cancel</Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button variant="solid" color="red" onClick={handleDelete}>
-                  Delete permanently
-                </Button>
-              </AlertDialog.Action>
+              <AlertDialog.Cancel><Button variant="soft" color="gray">Cancel</Button></AlertDialog.Cancel>
+              <AlertDialog.Action><Button variant="solid" color="red" onClick={handleDelete}>Delete permanently</Button></AlertDialog.Action>
             </Flex>
           </AlertDialog.Content>
         </AlertDialog.Root>
@@ -290,7 +290,6 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate, onSaved,
           onSaved={(saved) => {
             setContent(saved)
             setUpdatedAt(new Date().toISOString())
-            setEditing(false)
             onSaved?.(path)
           }}
         />
@@ -303,7 +302,8 @@ export function DocViewer({ path, meta, onDelete, allFiles, onNavigate, onSaved,
       <div ref={scrollRef} className="doc-viewer-scroll">
         <div className="doc-viewer-content">
           {renderHeader()}
-          <div ref={contentRef}>
+          <div ref={contentRef} key={path} className="doc-reading-page">
+            {!/^#\s/m.test(content ?? '') && <h1 className="document-fallback-title">{fileName.replace(/\.md$/, '').replace(/[-_]/g, ' ')}</h1>}
             <BlogPost
               content={content ?? ''}
               fill

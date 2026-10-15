@@ -1,0 +1,3 @@
+# Generated/vendor assets retain upstream formatting and line endings.
+frontend/public/ask-docs-demo.html -whitespace
+frontend/public/fonts/*-LICENSE.txt -whitespace

@@ -1,6 +1,11 @@
 .home-layout {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.home-activity {
+  flex-shrink: 0;
   padding: 40px var(--brand-layout-px, 24px) 64px;
   display: flex;
   flex-direction: column;
@@ -151,4 +156,102 @@
 .home-heatmap-legend .home-heatmap-cell {
   width: 10px;
   height: 10px;
+}
+
+.home-recent-card {
+  margin-top: 20px;
+  padding: 16px 24px 8px;
+}
+
+.home-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-recent-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 4px;
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--brand-font-body);
+}
+
+.home-recent-list li:first-child .home-recent-item {
+  border-top: none;
+}
+
+.home-recent-item:hover {
+  background: var(--bg-raised);
+}
+
+.home-recent-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.home-recent-path {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-recent-time {
+  flex-shrink: 0;
+  font-family: var(--brand-font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.home-walkthrough-teaser {
+  width: 100%;
+  max-width: 900px;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.home-walkthrough-teaser h2 {
+  margin: 0;
+  font-family: var(--brand-font-display);
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.home-walkthrough-teaser p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.home-walkthrough-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  text-underline-offset: 4px;
+}
+
+.home-walkthrough-link:hover { color: var(--accent-hover); }
+.home-walkthrough-link:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 4px;
 }

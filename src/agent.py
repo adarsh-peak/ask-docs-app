@@ -117,6 +117,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="docs-rag agent", lifespan=lifespan, docs_url="/swagger")
 app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="vite-assets")
+app.mount("/fonts", StaticFiles(directory=STATIC_DIR / "fonts"), name="local-fonts")
 
 
 @app.get("/favicon.ico")
@@ -210,6 +211,19 @@ async def list_docs():
             resp = await client.get(f"{APP_URL}/docs")
             resp.raise_for_status()
             return resp.json()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/docs")
+async def create_doc(payload: dict):
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.post(f"{APP_URL}/docs", json=payload)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e))
 
@@ -417,6 +431,11 @@ async def chat(req: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/ask-docs-demo.html")
+def cinematic():
+    return FileResponse(STATIC_DIR / "ask-docs-demo.html", media_type="text/html")
 
 
 @app.get("/{full_path:path}")

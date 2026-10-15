@@ -1,170 +1,76 @@
 import { useState, useEffect, useRef, type RefObject } from 'react'
-
-interface OutlineHeading {
-  level: 1 | 2 | 3
-  text: string
-  id: string
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
-interface DocOutlineProps {
-  /** Scrollable container that holds the rendered document. */
-  scrollRef: RefObject<HTMLDivElement | null>
-  /** Element whose subtree contains the h1/h2/h3 elements. */
-  contentRef: RefObject<HTMLDivElement | null>
-  /** Markdown source — used only as a signal to re-extract headings. */
-  content: string | null
-}
-
-/**
- * Notion-style floating outline rail. Pins to the right edge of the reading
- * pane as a column of tick-marks (width encodes heading depth); on hover it
- * expands into a labelled panel. The tick for the section currently in view is
- * highlighted and clicking smooth-scrolls to it.
- */
-export function DocOutline({ scrollRef, contentRef, content }: DocOutlineProps) {
-  const [headings, setHeadings] = useState<OutlineHeading[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [hovered, setHovered] = useState(false)
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
-  const visible = useRef<Set<string>>(new Set())
-
-  // After the document renders, inject id attributes and extract the heading list.
+import { Popover, Button } from '@radix-ui/themes'
+interface Heading { level: number; text: string; id: string }
+interface Props { scrollRef: RefObject<HTMLDivElement | null>; contentRef: RefObject<HTMLDivElement | null>; content: string | null }
+export function DocOutline({ scrollRef, contentRef, content }: Props) {
+  const [headings, setHeadings] = useState<Heading[]>([])
+  const [active, setActive] = useState('')
+  const [open, setOpen] = useState(false)
+  const activeTabRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
-    const extract = () => {
-      const root = contentRef.current
-      if (!root || !content) {
-        setHeadings([])
-        setActiveId(null)
-        return
+    const counts = new Map<string, number>()
+    const found = Array.from(contentRef.current?.querySelectorAll('h1,h2,h3') ?? []).map((el, index) => {
+      const text = el.textContent ?? ''
+      const base = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || `section-${index}`
+      const count = counts.get(base) ?? 0
+      counts.set(base, count + 1)
+      el.id = `doc-${base}${count ? `-${count}` : ''}`
+      return { text, id: el.id, level: Number(el.tagName[1]) }
+    })
+    setHeadings(found)
+    setActive(found[0]?.id ?? '')
+  }, [content, contentRef, scrollRef])
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (!scroller) return
+    const update = () => {
+      const top = scroller.getBoundingClientRect().top + 100
+      let current = headings[0]?.id ?? ''
+      for (const heading of headings) {
+        const element = contentRef.current?.querySelector(`#${CSS.escape(heading.id)}`)
+        if (element && element.getBoundingClientRect().top <= top) current = heading.id
       }
-      const slugCounts: Record<string, number> = {}
-      const found: OutlineHeading[] = []
-      root.querySelectorAll('h1, h2, h3').forEach(h => {
-        const level = parseInt(h.tagName[1]) as 1 | 2 | 3
-        const text = h.textContent ?? ''
-        const base = slugify(text) || `heading-${found.length}`
-        const count = slugCounts[base] ?? 0
-        const id = count === 0 ? base : `${base}-${count}`
-        slugCounts[base] = count + 1
-        h.id = id
-        found.push({ level, text, id })
-      })
-      setHeadings(found)
-      setActiveId(cur => (cur && found.some(f => f.id === cur) ? cur : found[0]?.id ?? null))
+      setActive(current)
     }
-    extract()
-    // Catch markdown that paints a frame late (e.g. syntax highlighting).
-    const raf = requestAnimationFrame(extract)
-    return () => cancelAnimationFrame(raf)
-  }, [content])
-
-  // Track which section is in view via a thin band near the top of the pane.
+    scroller.addEventListener('scroll', update, { passive: true })
+    update()
+    return () => scroller.removeEventListener('scroll', update)
+  }, [headings, scrollRef, contentRef])
+  const primary = headings.filter(h => h.level === 2)
+  const tabs = primary.length ? primary : headings
+  const currentIndex = headings.findIndex(h => h.id === active)
+  const currentSection = [...(primary.length ? primary : headings)].reverse().find(h => headings.indexOf(h) <= currentIndex)
+  const activeTab = currentSection?.id
   useEffect(() => {
-    if (!contentRef.current || !scrollRef.current || headings.length === 0) return
-    visible.current.clear()
-    const observer = new IntersectionObserver(
-      entries => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) visible.current.add(entry.target.id)
-          else visible.current.delete(entry.target.id)
-        }
-        const first = headings.find(h => visible.current.has(h.id))
-        if (first) setActiveId(first.id)
-      },
-      { root: scrollRef.current, rootMargin: '-8% 0px -80% 0px', threshold: 0 },
-    )
-    contentRef.current.querySelectorAll('h1, h2, h3').forEach(h => observer.observe(h))
-    return () => observer.disconnect()
-  }, [headings])
-
-  if (headings.length === 0) return null
-
-  const tickWidth = (level: number) => (level === 1 ? 16 : level === 2 ? 11 : 7)
-
-  const scrollTo = (id: string) => {
-    contentRef.current
-      ?.querySelector(`#${CSS.escape(id)}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    activeTabRef.current?.scrollIntoView({
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [activeTab])
+  if (!headings.length) return null
+  const navigate = (id: string) => {
+    const el = contentRef.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}`)
+    el?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' })
+    if (el) { el.tabIndex = -1; el.focus({ preventScroll: true }) }
+    setOpen(false)
   }
-
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); setHoveredId(null) }}
-      style={{
-        position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)',
-        zIndex: 20,
-      }}
-    >
-      {/* Collapsed tick rail */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7,
-        padding: '8px 16px 8px 28px',
-        opacity: hovered ? 0 : 1,
-        transition: 'opacity 140ms ease',
-      }}>
-        {headings.map(h => (
-          <div key={h.id} style={{
-            width: tickWidth(h.level), height: 2, borderRadius: 2,
-            background: h.id === activeId ? 'var(--accent)' : 'var(--text-muted)',
-            opacity: h.id === activeId ? 0.95 : 0.4,
-            transition: 'background 120ms, opacity 120ms, width 120ms',
-          }} />
-        ))}
-      </div>
-
-      {/* Expanded label panel */}
-      <div style={{
-        position: 'absolute', top: '50%', right: 8,
-        transform: hovered
-          ? 'translateY(-50%) translateX(0)'
-          : 'translateY(-50%) translateX(8px)',
-        minWidth: 180, maxWidth: 280, maxHeight: '70vh', overflowY: 'auto',
-        background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-        borderRadius: 10, boxShadow: 'var(--brand-shadow-lg)', padding: '6px 0',
-        opacity: hovered ? 1 : 0,
-        pointerEvents: hovered ? 'auto' : 'none',
-        transition: 'opacity 140ms ease, transform 140ms ease',
-      }}>
-        {headings.map(h => {
-          const isActive = h.id === activeId
-          const isHover = h.id === hoveredId
-          return (
-            <button
-              key={h.id}
-              onClick={() => scrollTo(h.id)}
-              onMouseEnter={() => setHoveredId(h.id)}
-              onMouseLeave={() => setHoveredId(cur => (cur === h.id ? null : cur))}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                background: isActive
-                  ? 'var(--accent-subtle)'
-                  : isHover ? 'var(--bg-hover)' : 'transparent',
-                color: isActive
-                  ? 'var(--accent)'
-                  : isHover ? 'var(--text-primary)' : 'var(--text-secondary)',
-                border: 'none', cursor: 'pointer',
-                paddingTop: 5, paddingBottom: 5, paddingRight: 12,
-                paddingLeft: 12 + (h.level - 1) * 12,
-                fontSize: 12.5, fontFamily: 'var(--brand-font-body)', lineHeight: 1.4,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                transition: 'background 100ms, color 100ms',
-              }}
-            >
-              {h.text}
-            </button>
-          )
-        })}
-      </div>
+  return <nav className="section-rail" aria-label="Document sections">
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger>
+        <Button className="section-contents" variant="ghost" color="gray" aria-label="All document sections" title="All document sections">
+          <svg className="section-contents-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 3.5h10M3 8h10M3 12.5h10" />
+            <circle cx="1.5" cy="3.5" r=".6" /><circle cx="1.5" cy="8" r=".6" /><circle cx="1.5" cy="12.5" r=".6" />
+          </svg>
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content maxWidth="340px" className="section-menu">
+        {headings.map(h => <button key={h.id} onClick={() => navigate(h.id)} aria-current={h.id === active ? 'location' : undefined} style={{ paddingLeft: 12 + (h.level - 1) * 12 }}>{h.text}</button>)}
+      </Popover.Content>
+    </Popover.Root>
+    <div className="section-tabs">
+      {tabs.map((h, i) => <button ref={h.id === activeTab ? activeTabRef : undefined} key={h.id} className={`section-tab section-tab--${i % 4}`} onClick={() => navigate(h.id)} title={h.text} aria-current={h.id === activeTab ? 'location' : undefined}><span>{h.level === 1 && h === headings[0] ? 'Overview' : h.text}</span></button>)}
     </div>
-  )
+  </nav>
 }

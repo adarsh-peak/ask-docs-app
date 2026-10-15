@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Popover, Button, IconButton, Tooltip, AlertDialog, Flex } from '@radix-ui/themes'
-import { Link, useLocation } from 'react-router-dom'
-import { AgMark, ThemeToggle, useTheme } from '@adarsh_goswami/design'
-import { KeyChip } from './KeyChip'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useTheme } from '@adarsh_goswami/design'
 import { IndexPopover } from './IndexPopover'
+import { WorkspaceIcon } from './WorkspaceIcon'
 
 interface HeaderProps {
   docCount: number
@@ -18,114 +18,81 @@ interface HeaderProps {
 }
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Chat' },
-  { path: '/files', label: 'Files' },
-  { path: '/graph', label: 'Graph' },
+  { path: '/files', label: 'Files', icon: 'folder' },
+  { path: '/ask', label: 'Chat', icon: 'chat' },
+  { path: '/graph', label: 'Graph', icon: 'graph' },
+  { path: '/home', label: 'Activity', icon: 'activity' },
 ] as const
 
 export function Header({
   docCount, chunkCount, isReindexing, apiKey,
   onReindex, onWipeReindex, onUpdateKey, onForgetKey, onTestCelebrate,
 }: HeaderProps) {
-  const { theme } = useTheme()
   const { pathname } = useLocation()
-  const [indexOpen, setIndexOpen] = useState(false)
+  const navigate = useNavigate()
+  const { theme, toggleTheme } = useTheme()
+  const [search, setSearch] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [wipeOpen, setWipeOpen] = useState(false)
-  const isDark = theme === 'dark'
-  const hasDocs = docCount > 0
 
   return (
-    <header style={{
-      position: 'relative', zIndex: 2,
-      flexShrink: 0, height: 52,
-      display: 'flex', justifyContent: 'center',
-      borderBottom: '1px solid var(--border-subtle)',
-      background: isDark
-        ? 'linear-gradient(180deg, color-mix(in srgb, var(--bg-base) 94%, transparent), color-mix(in srgb, var(--bg-base) 78%, transparent))'
-        : 'linear-gradient(180deg, rgba(250,250,250,0.9), rgba(250,250,250,0.6))',
-      backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-    }}>
-      <div style={{
-        width: '100%', maxWidth: 'var(--brand-layout-container-max)',
-        padding: '0 var(--brand-layout-px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
-      }}>
-        {/* Left: brand */}
-        <Link to="/home" style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          flexShrink: 0, textDecoration: 'none',
-        }}>
-          <AgMark size={24} />
-          <span style={{
-            fontFamily: 'var(--brand-font-display)', fontWeight: 700, fontSize: 16,
-            letterSpacing: '-0.02em', color: 'var(--text-primary)',
-          }}>
-            Ask Doc<span style={{ color: 'var(--accent)' }}>.</span>
-          </span>
-        </Link>
-
-        {/* Center: nav links */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          {NAV_ITEMS.map(item => {
-            const isActive = item.path === '/' ? pathname === '/' : pathname.startsWith(item.path)
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={
-                  'text-sm no-underline transition-colors duration-fast ' +
-                  (isActive
-                    ? 'text-accent font-medium'
-                    : 'text-text-secondary hover:text-text-primary')
-                }
-              >
-                {item.label}
-              </Link>
-            )
-          })}
+    <header className="app-header">
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      <div className="app-header-inner">
+        <Link to="/home" className="app-wordmark">Ask Docs</Link>
+        <form className="header-search" role="search" onSubmit={e => { e.preventDefault(); navigate('/files', { state: { searchQuery: search } }) }}>
+          <WorkspaceIcon name="search" />
+          <input aria-label="Search documents" placeholder="Search documents and folders…" value={search} onChange={e => setSearch(e.target.value)} />
+        </form>
+        <nav className="app-navigation" aria-label="Main navigation">
+          {NAV_ITEMS.map(item => (
+            <Link key={item.path} to={item.path} className="app-nav-link" aria-current={pathname.startsWith(item.path) ? 'page' : undefined}><WorkspaceIcon name={item.icon} />{item.label}</Link>
+          ))}
         </nav>
-
         {/* Right: toggle, then controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <ThemeToggle aria-label="Toggle color theme" />
+        <div className="app-header-tools">
+          <Tooltip content={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}><button className="header-theme" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}><WorkspaceIcon name={theme === 'dark' ? 'sun' : 'moon'} size={23} /></button></Tooltip>
+          <Button className="header-new-document" aria-label="New document" onClick={() => navigate('/files', { state: { newDocument: Date.now() } })}><span>New document</span><WorkspaceIcon name="plus" /></Button>
 
-          <Tooltip content="Preview celebration animation">
-            <IconButton variant="soft" color="gray" size="2" onClick={onTestCelebrate} aria-label="Preview celebration animation">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 13 6 3l4 4L1 13Z" />
-                <path d="M9 1.5 9.7 3l1.5.7-1.5.7L9 6l-.7-1.6L6.8 3.7l1.5-.7L9 1.5Z" fill="currentColor" stroke="none" />
-                <path d="M12.2 5 12.6 6l1 .4-1 .4-.4 1-.4-1-1-.4 1-.4.4-1Z" fill="currentColor" stroke="none" />
-              </svg>
-            </IconButton>
-          </Tooltip>
-
-          <Popover.Root open={indexOpen} onOpenChange={setIndexOpen}>
+          <Popover.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
             <Popover.Trigger>
-              <Button variant="soft" color="gray" size="2">
-                <span style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  background: hasDocs ? 'var(--success)' : 'var(--text-muted)',
-                  animation: hasDocs ? 'ad-pulse 2s infinite' : 'none',
-                }} />
-                {docCount} docs
-              </Button>
+              <IconButton variant="ghost" color="gray" size="2" aria-label="Workspace settings"><WorkspaceIcon name="more" /></IconButton>
             </Popover.Trigger>
-            <Popover.Content size="1" width="260px">
-              <IndexPopover
-                docCount={docCount}
-                chunkCount={chunkCount}
-                isReindexing={isReindexing}
-                onReindex={onReindex}
-                onRequestWipe={() => { setIndexOpen(false); setWipeOpen(true) }}
-              />
+            <Popover.Content width="300px" aria-label="Workspace settings">
+              <div className="app-settings">
+                <p className="app-settings-title">Workspace settings</p>
+                <IndexPopover
+                  docCount={docCount}
+                  chunkCount={chunkCount}
+                  isReindexing={isReindexing}
+                  onReindex={onReindex}
+                  onRequestWipe={() => { setSettingsOpen(false); setWipeOpen(true) }}
+                />
+                <div className="app-settings-key">
+                  <div className="app-settings-row">
+                    <span>Gemini API key</span>
+                    {apiKey && <span className="app-settings-key-value">{'·····' + apiKey.slice(-4)}</span>}
+                  </div>
+                  <Flex gap="2">
+                    <Button variant="soft" color="gray" size="2" onClick={() => { setSettingsOpen(false); onUpdateKey() }}>
+                      {apiKey ? 'Update key' : '+ Add API key'}
+                    </Button>
+                    {apiKey && <Button variant="soft" color="red" size="2" onClick={() => { setSettingsOpen(false); onForgetKey() }}>Forget key</Button>}
+                  </Flex>
+                </div>
+                <Tooltip content="Preview celebration animation">
+                  <IconButton variant="soft" color="gray" size="2" onClick={onTestCelebrate} aria-label="Preview celebration animation">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 13 6 3l4 4L1 13Z" />
+                      <path d="M9 1.5 9.7 3l1.5.7-1.5.7L9 6l-.7-1.6L6.8 3.7l1.5-.7L9 1.5Z" fill="currentColor" stroke="none" />
+                      <path d="M12.2 5 12.6 6l1 .4-1 .4-.4 1-.4-1-1-.4 1-.4.4-1Z" fill="currentColor" stroke="none" />
+                    </svg>
+                  </IconButton>
+                </Tooltip>
+
+              </div>
             </Popover.Content>
           </Popover.Root>
-
-          {apiKey ? (
-            <KeyChip apiKey={apiKey} onUpdate={onUpdateKey} onForget={onForgetKey} />
-          ) : (
-            <Button variant="soft" size="2" onClick={onUpdateKey}>+ Add API key</Button>
-          )}
         </div>
       </div>
 
